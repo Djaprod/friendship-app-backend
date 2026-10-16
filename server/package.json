@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=../.env server.mjs",
-    "test": "node --test test.mjs games.test.mjs auth.test.mjs economy.test.mjs settings.test.mjs messaging.test.mjs public-origin.test.mjs",
+    "test": "node --test test.mjs games.test.mjs auth.test.mjs economy.test.mjs settings.test.mjs messaging.test.mjs public-origin.test.mjs database-config.test.mjs",
     "test:storage": "node --test postgres.test.mjs",
     "check:launch": "node --env-file-if-exists=../.env check-launch.mjs"
   },

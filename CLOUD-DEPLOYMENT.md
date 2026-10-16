@@ -82,3 +82,16 @@ Stop the old server and the hosted service. Back up `server/data/artii.json` and
 Official references: https://supabase.com/docs/guides/database/connecting-to-postgres · https://render.com/docs/websocket · https://render.com/docs/disks
 
 Social sign-in activation is documented step by step in [AUTH-SETUP.md](AUTH-SETUP.md). Create your Auth0 and provider applications after the cloud origin is known. The callback now includes a credential-free **Open Artii** link. `npm run check:launch` checks required environment settings and identity-provider discovery. Live provider credentials/review and real phone tests remain necessary; no provider is claimed to be enabled by this package.
+
+## Database startup troubleshooting
+
+Startup errors now include the failing stage and a safe error code. The PUBLIC_ORIGIN fallback warning is not a database failure.
+
+- `ENETUNREACH`: use the Supabase **Connect → Session pooler** URI on port **5432** when the direct database address is IPv6-only.
+- `28P01` / `28000`: copy the full pooler username and supply the database password, with special characters URI-encoded. This is not the Supabase API key.
+- `SELF_SIGNED_CERT_IN_CHAIN` or issuer errors: upload the provider CA certificate as a Render secret file and set `DATABASE_CA_FILE` to its path. Keep certificate verification enabled.
+- `ARTII_TRANSACTION_POOL`: replace the port-6543 transaction URI with the port-5432 session URI.
+- `ARTII_WRITER_ACTIVE`: an existing instance owns the database lock. Stop that instance before starting the replacement; run one instance only.
+- `42501`: use the database owner role for the first migration.
+
+Set connection secrets only in Render Environment. If deployment still fails, share the new stage/error-code line, never DATABASE_URL or the password. A code update cannot repair incorrect credentials or missing provider configuration automatically.
