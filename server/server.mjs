@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {configurePublicOrigin} from './public-origin.mjs';
 import {attachChat} from './chat-network.mjs';
 import {createMessaging,MAX_MEDIA_BYTES,MAX_VOICE_MS} from './messaging.mjs';
 import {promisify} from 'node:util';
@@ -190,9 +191,9 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
   return server;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+  configurePublicOrigin();
   let storage=null;
   if(process.env.DATABASE_URL){const {openPostgres}=await import('./postgres.mjs');storage=openPostgres();}
-  if(process.env.NODE_ENV==='production'&&!/^https:\/\/[^/]+$/.test(process.env.PUBLIC_ORIGIN||''))throw Error('Set PUBLIC_ORIGIN to the public HTTPS origin');
   const server=createArtiiServer({storage});const port=Number(process.env.PORT||8787);
   server.listen(port,process.env.HOST||'127.0.0.1',()=>console.log('Artii API ready on port '+port));
   let stopping=false;const sockets=new Set();server.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));});
