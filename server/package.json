@@ -1,0 +1,21 @@
+{
+  "name": "artii-server",
+  "version": "0.7.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=../.env server.mjs",
+    "test": "node --test test.mjs games.test.mjs auth.test.mjs economy.test.mjs settings.test.mjs messaging.test.mjs",
+    "test:storage": "node --test postgres.test.mjs",
+    "check:launch": "node --env-file-if-exists=../.env check-launch.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10"
+  }
+}

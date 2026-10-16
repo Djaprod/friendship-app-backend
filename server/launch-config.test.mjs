@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {launchConfiguration} from './launch-config.mjs';
+test('missing and placeholder provider credentials cannot pass launch checks',()=>{assert.equal(launchConfiguration({}).configured,false);assert.ok(launchConfiguration({AUTH_CLIENT_ID:'replace-with-id'}).missing.includes('AUTH_CLIENT_ID'));});
+test('unsafe origins and transaction pooling are rejected',()=>{const r=launchConfiguration({PUBLIC_ORIGIN:'https://user:password@example.com',AUTH_ISSUER:'http://example.com',DATABASE_URL:'postgres://u:p@example.com:6543/db'});assert.ok(r.missing.some(x=>x.includes('PUBLIC_ORIGIN (')));assert.ok(r.missing.some(x=>x.includes('AUTH_ISSUER (')));assert.ok(r.missing.some(x=>x.includes('DATABASE_URL (')));});

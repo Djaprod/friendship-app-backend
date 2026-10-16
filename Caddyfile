@@ -1,0 +1,4 @@
+{$ARTII_DOMAIN} {
+    reverse_proxy artii:8787
+    header Strict-Transport-Security "max-age=31536000"
+}

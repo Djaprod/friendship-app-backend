@@ -1,0 +1,26 @@
+# Deploy this file from the Artii project root. One instance is mandatory.
+services:
+  - type: web
+    name: artii-api
+    runtime: docker
+    plan: starter
+    numInstances: 1
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    disk:
+      name: artii-media
+      mountPath: /app/server/data
+      sizeGB: 10
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATA_DIR
+        value: /app/server/data
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: PUBLIC_ORIGIN
+        sync: false

@@ -1,0 +1,4 @@
+services:
+  artii:
+    volumes:
+      - ./private/google-play.json:/run/secrets/google-play.json:ro

@@ -1,0 +1,9 @@
+**/build
+**/.gradle
+**/data
+**/node_modules
+.git
+.env
+.env.*
+local.properties
+private/

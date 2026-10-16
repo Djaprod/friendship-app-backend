@@ -1,0 +1,374 @@
+{
+  "1_animals": [
+    {
+      "word_a": "Lion",
+      "word_b": "Tiger"
+    },
+    {
+      "word_a": "Cat",
+      "word_b": "Kitten"
+    },
+    {
+      "word_a": "Dog",
+      "word_b": "Wolf"
+    },
+    {
+      "word_a": "Horse",
+      "word_b": "Donkey"
+    },
+    {
+      "word_a": "Dolphin",
+      "word_b": "Whale"
+    },
+    {
+      "word_a": "Shark",
+      "word_b": "Orca"
+    },
+    {
+      "word_a": "Grizzly Bear",
+      "word_b": "Polar Bear"
+    },
+    {
+      "word_a": "Penguin",
+      "word_b": "Puffin"
+    },
+    {
+      "word_a": "Cheetah",
+      "word_b": "Leopard"
+    },
+    {
+      "word_a": "Rabbit",
+      "word_b": "Hare"
+    },
+    {
+      "word_a": "Crocodile",
+      "word_b": "Alligator"
+    },
+    {
+      "word_a": "Eagle",
+      "word_b": "Falcon"
+    },
+    {
+      "word_a": "Fox",
+      "word_b": "Coyote"
+    },
+    {
+      "word_a": "Monkey",
+      "word_b": "Chimpanzee"
+    },
+    {
+      "word_a": "Rat",
+      "word_b": "Mouse"
+    }
+  ],
+  "2_celebrities": [
+    {
+      "word_a": "Taylor Swift",
+      "word_b": "Beyonce"
+    },
+    {
+      "word_a": "Leonardo DiCaprio",
+      "word_b": "Brad Pitt"
+    },
+    {
+      "word_a": "Tom Cruise",
+      "word_b": "Keanu Reeves"
+    },
+    {
+      "word_a": "Rihanna",
+      "word_b": "Ariana Grande"
+    },
+    {
+      "word_a": "Dwayne Johnson",
+      "word_b": "John Cena"
+    },
+    {
+      "word_a": "Robert Downey Jr.",
+      "word_b": "Chris Evans"
+    },
+    {
+      "word_a": "Zendaya",
+      "word_b": "Tom Holland"
+    },
+    {
+      "word_a": "Billie Eilish",
+      "word_b": "Olivia Rodrigo"
+    },
+    {
+      "word_a": "Eminem",
+      "word_b": "Drake"
+    },
+    {
+      "word_a": "Lady Gaga",
+      "word_b": "Madonna"
+    },
+    {
+      "word_a": "Selena Gomez",
+      "word_b": "Demi Lovato"
+    },
+    {
+      "word_a": "Johnny Depp",
+      "word_b": "Orlando Bloom"
+    },
+    {
+      "word_a": "Justin Bieber",
+      "word_b": "Shawn Mendes"
+    },
+    {
+      "word_a": "Kim Kardashian",
+      "word_b": "Kylie Jenner"
+    },
+    {
+      "word_a": "Kanye West",
+      "word_b": "Travis Scott"
+    }
+  ],
+  "3_football_players": [
+    {
+      "word_a": "Lionel Messi",
+      "word_b": "Cristiano Ronaldo"
+    },
+    {
+      "word_a": "Kylian Mbappe",
+      "word_b": "Erling Haaland"
+    },
+    {
+      "word_a": "Neymar Jr",
+      "word_b": "Ronaldinho"
+    },
+    {
+      "word_a": "Kevin De Bruyne",
+      "word_b": "Luka Modric"
+    },
+    {
+      "word_a": "Mohamed Salah",
+      "word_b": "Sadio Mane"
+    },
+    {
+      "word_a": "Harry Kane",
+      "word_b": "Robert Lewandowski"
+    },
+    {
+      "word_a": "Jude Bellingham",
+      "word_b": "Jamal Musiala"
+    },
+    {
+      "word_a": "Zinedine Zidane",
+      "word_b": "Andres Iniesta"
+    },
+    {
+      "word_a": "Vinicius Jr",
+      "word_b": "Rodrygo"
+    },
+    {
+      "word_a": "Virgil van Dijk",
+      "word_b": "Sergio Ramos"
+    },
+    {
+      "word_a": "Bukayo Saka",
+      "word_b": "Phil Foden"
+    },
+    {
+      "word_a": "Karim Benzema",
+      "word_b": "Luis Suarez"
+    },
+    {
+      "word_a": "Alisson Becker",
+      "word_b": "Ederson"
+    },
+    {
+      "word_a": "Lamine Yamal",
+      "word_b": "Endrick"
+    },
+    {
+      "word_a": "David Beckham",
+      "word_b": "Kaká"
+    }
+  ],
+  "4_anime": [
+    {
+      "word_a": "Naruto",
+      "word_b": "Boruto"
+    },
+    {
+      "word_a": "Dragon Ball Z",
+      "word_b": "Naruto Shippuden"
+    },
+    {
+      "word_a": "One Piece",
+      "word_b": "Fairy Tail"
+    },
+    {
+      "word_a": "Attack on Titan",
+      "word_b": "Demon Slayer"
+    },
+    {
+      "word_a": "Death Note",
+      "word_b": "Code Geass"
+    },
+    {
+      "word_a": "My Hero Academia",
+      "word_b": "Black Clover"
+    },
+    {
+      "word_a": "Jujutsu Kaisen",
+      "word_b": "Chainsaw Man"
+    },
+    {
+      "word_a": "Hunter x Hunter",
+      "word_b": "Yu Yu Hakusho"
+    },
+    {
+      "word_a": "Fullmetal Alchemist",
+      "word_b": "Bleach"
+    },
+    {
+      "word_a": "Neon Genesis Evangelion",
+      "word_b": "Gundam"
+    },
+    {
+      "word_a": "Sailor Moon",
+      "word_b": "Cardcaptor Sakura"
+    },
+    {
+      "word_a": "Tokyo Ghoul",
+      "word_b": "Parasyte"
+    },
+    {
+      "word_a": "One Punch Man",
+      "word_b": "Mob Psycho 100"
+    },
+    {
+      "word_a": "Sword Art Online",
+      "word_b": "Solo Leveling"
+    },
+    {
+      "word_a": "Spirited Away",
+      "word_b": "My Neighbor Totoro"
+    }
+  ],
+  "5_film_and_series": [
+    {
+      "word_a": "Stranger Things",
+      "word_b": "Wednesday"
+    },
+    {
+      "word_a": "Game of Thrones",
+      "word_b": "House of the Dragon"
+    },
+    {
+      "word_a": "Breaking Bad",
+      "word_b": "Better Call Saul"
+    },
+    {
+      "word_a": "The Avengers",
+      "word_b": "Justice League"
+    },
+    {
+      "word_a": "Harry Potter",
+      "word_b": "Lord of the Rings"
+    },
+    {
+      "word_a": "Star Wars",
+      "word_b": "Star Trek"
+    },
+    {
+      "word_a": "The Office",
+      "word_b": "Parks and Recreation"
+    },
+    {
+      "word_a": "Friends",
+      "word_b": "How I Met Your Mother"
+    },
+    {
+      "word_a": "Spider-Man",
+      "word_b": "Batman"
+    },
+    {
+      "word_a": "Squid Game",
+      "word_b": "Alice in Borderland"
+    },
+    {
+      "word_a": "The Matrix",
+      "word_b": "Inception"
+    },
+    {
+      "word_a": "Avatar",
+      "word_b": "Titanic"
+    },
+    {
+      "word_a": "Peaky Blinders",
+      "word_b": "Boardwalk Empire"
+    },
+    {
+      "word_a": "The Crown",
+      "word_b": "Bridgerton"
+    },
+    {
+      "word_a": "Interstellar",
+      "word_b": "The Martian"
+    }
+  ],
+  "6_everyday_objects": [
+    {
+      "word_a": "Table",
+      "word_b": "Desk"
+    },
+    {
+      "word_a": "The Sun",
+      "word_b": "The Moon"
+    },
+    {
+      "word_a": "Smartphone",
+      "word_b": "Tablet"
+    },
+    {
+      "word_a": "Coffee",
+      "word_b": "Tea"
+    },
+    {
+      "word_a": "Television",
+      "word_b": "Projector"
+    },
+    {
+      "word_a": "Car",
+      "word_b": "Motorcycle"
+    },
+    {
+      "word_a": "Laptop",
+      "word_b": "Desktop PC"
+    },
+    {
+      "word_a": "Sofa",
+      "word_b": "Armchair"
+    },
+    {
+      "word_a": "Shoes",
+      "word_b": "Sneakers"
+    },
+    {
+      "word_a": "Window",
+      "word_b": "Door"
+    },
+    {
+      "word_a": "Water",
+      "word_b": "Soda"
+    },
+    {
+      "word_a": "Watch",
+      "word_b": "Clock"
+    },
+    {
+      "word_a": "Bed",
+      "word_b": "Mattress"
+    },
+    {
+      "word_a": "Pen",
+      "word_b": "Pencil"
+    },
+    {
+      "word_a": "Backpack",
+      "word_b": "Suitcase"
+    }
+  ]
+}

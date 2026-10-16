@@ -1,0 +1,42 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';import {join} from 'node:path';import {once} from 'node:events';
+import {randomBytes,createHash,generateKeyPairSync,sign} from 'node:crypto';
+import {createArtiiServer} from './server.mjs';import {verifyIdentity,createSocial} from './social.mjs';
+async function fixture(options={},initial){const dir=await mkdtemp(join(tmpdir(),'artii-auth-')),file=join(dir,'db.json');if(initial)await writeFile(file,JSON.stringify(initial));const server=createArtiiServer({file,...options});server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;return {file,async req(path,body,token,method){const r=await fetch(base+path,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:r.headers.get('content-type').includes('json')?await r.json():await r.text()}},async close(){server.closeAllConnections();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true})}}}
+const account=(username,email=username+'@example.com')=>({email,password:'VeryStrongPass123!',username,adult:true});
+test('username case normalization, exact friend lookup, editable unique username and password login',async()=>{const f=await fixture();try{
+ const a=await f.req('/auth/register',account('MaYa'));assert.equal(a.status,200);assert.equal(a.data.user.username,'maya');
+ assert.equal((await f.req('/auth/username?username=MAYA')).data.available,false);
+ assert.equal((await f.req('/auth/username?username=free_name')).data.available,true);
+ assert.equal((await f.req('/auth/register',account('MAYA','another@example.com'))).status,409);
+ const b=await f.req('/auth/register',account('leo'));assert.equal((await f.req('/people/by-username?username=MAYA',null,b.data.token)).data.person.id,a.data.user.id);
+ assert.equal((await f.req('/people/by-username?username=may',null,b.data.token)).status,404);
+ await f.req('/profile',{name:'A new display name',username:'maya_new'},a.data.token,'PUT');assert.equal((await f.req('/state',null,a.data.token)).data.me.username,'maya_new');
+ assert.equal((await f.req('/auth/login',{email:'maya@example.com',password:'VeryStrongPass123!'})).status,200);
+ assert.equal((await f.req('/auth/login',{email:'maya@example.com',password:'WrongPassword123!'})).status,401);
+ await f.req('/block',{user:a.data.user.id},b.data.token);assert.equal((await f.req('/people/by-username?username=maya_new',null,b.data.token)).status,404);
+ }finally{await f.close()}});
+test('concurrent registrations cannot claim the same username',async()=>{const f=await fixture();try{const r=await Promise.all([f.req('/auth/register',account('same_name','a@example.com')),f.req('/auth/register',account('SAME_NAME','b@example.com'))]);assert.deepEqual(r.map(x=>x.status).sort(),[200,409]);const db=JSON.parse(await readFile(f.file));assert.equal(db.users.length,1);assert.equal(db.sessions.length,1)}finally{await f.close()}});
+test('invalid usernames and unconfigured social sign-in fail closed',async()=>{const f=await fixture();try{for(const username of ['aa','admin','1name','name space','a'.repeat(25),'名friend'])assert.equal((await f.req('/auth/register',account(username))).status,400);assert.deepEqual((await f.req('/auth/config')).data.providers,{google:false,facebook:false,apple:false});assert.equal((await f.req('/auth/social/start',{provider:'google',challenge:'A'.repeat(43)})).status,503)}finally{await f.close()}});
+test('legacy accounts receive stable unique usernames without losing IDs',async()=>{const f=await fixture({}, {users:[{id:'old1',name:'Maya'},{id:'old2',name:'Maya'},{id:'old3',name:'Admin'}]});try{const db=JSON.parse(await readFile(f.file));assert.deepEqual(db.users.map(u=>u.id),['old1','old2','old3']);assert.equal(new Set(db.users.map(u=>u.username)).size,3);assert.equal(db.users[0].username,'maya')}finally{await f.close()}});
+const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});const jwk={...publicKey.export({format:'jwk'}),kid:'test',use:'sig',alg:'RS256'};
+const jwt=claims=>{const b=Buffer.from(JSON.stringify({alg:'RS256',kid:'test'})).toString('base64url')+'.'+Buffer.from(JSON.stringify(claims)).toString('base64url');return b+'.'+sign('RSA-SHA256',Buffer.from(b),privateKey).toString('base64url')};
+const claims=()=>({iss:'https://tenant.example/',aud:'client',sub:'google-oauth2|123',nonce:'nonce',email:'verified@example.com',email_verified:true,iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+300});
+test('identity verification rejects forged signatures, wrong audience, nonce and expired tokens',()=>{const options={issuer:'https://tenant.example/',clientId:'client',nonce:'nonce'};assert.equal(verifyIdentity(jwt(claims()),[jwk],options).subject,'google-oauth2|123');for(const c of [{...claims(),aud:'other'},{...claims(),azp:'other'},{...claims(),nonce:'wrong'},{...claims(),exp:1},{...claims(),iss:'https://attacker.example/'}])assert.throws(()=>verifyIdentity(jwt(c),[jwk],options));assert.throws(()=>verifyIdentity(jwt(claims()).slice(0,-20)+'bad',[jwk],options))});
+test('social first signup requires a username and age confirmation; handoff is proof-bound and single-use',async()=>{let nonce;const f=await fixture({socialOptions:{env:{AUTH_ISSUER:'https://tenant.example/',AUTH_CLIENT_ID:'client',AUTH_CLIENT_SECRET:'test-secret',PUBLIC_ORIGIN:'https://artii.example',AUTH_GOOGLE_CONNECTION:'google-oauth2'},fetcher:async url=>({ok:true,json:async()=>url.endsWith('jwks.json')?{keys:[jwk]}:{id_token:jwt({...claims(),nonce})}})}});try{
+ const proof=randomBytes(32).toString('base64url'),challenge=createHash('sha256').update(proof).digest('base64url');
+ const start=await f.req('/auth/social/start',{provider:'google',challenge});assert.equal(start.status,200);const url=new URL(start.data.authorizationUrl);nonce=url.searchParams.get('nonce');assert.equal(url.searchParams.get('code_challenge_method'),'S256');const body={flowId:start.data.flowId,proof};
+ assert.equal((await f.req('/auth/social/result',{...body,proof:'wrong'})).status,401);
+ assert.equal((await f.req('/auth/social/result',body)).data.status,'waiting');
+ assert.equal((await f.req('/auth/social/callback?state='+url.searchParams.get('state')+'&code=verified')).status,200);
+ const pending=await f.req('/auth/social/result',body);assert.equal(pending.data.status,'username_required');assert.equal(pending.data.token,undefined);
+ assert.equal((await f.req('/auth/social/complete',{...body,username:'social_friend'})).status,400);
+ const done=await f.req('/auth/social/complete',{...body,username:'social_friend',adult:true});assert.equal(done.data.user.username,'social_friend');assert.ok(done.data.token);
+ assert.equal((await f.req('/auth/social/result',body)).status,401);
+ const again=await f.req('/auth/social/start',{provider:'google',challenge});const next=new URL(again.data.authorizationUrl);nonce=next.searchParams.get('nonce');await f.req('/auth/social/callback?state='+next.searchParams.get('state')+'&code=verified');const returning=await f.req('/auth/social/result',{flowId:again.data.flowId,proof});assert.equal(returning.data.status,'authenticated');assert.equal(returning.data.user.id,done.data.user.id);assert.equal(returning.data.user.username,'social_friend');
+ assert.equal((await f.req('/auth/social/callback?state='+url.searchParams.get('state')+'&code=verified')).status,400);
+ }finally{await f.close()}});
+
+test('social attempts expire and cancellation does not create a session',async()=>{let now=10000;const broker=createSocial({clock:()=>now,env:{AUTH_ISSUER:'https://tenant.example/',AUTH_CLIENT_ID:'client',AUTH_CLIENT_SECRET:'secret',PUBLIC_ORIGIN:'https://artii.example',AUTH_GOOGLE_CONNECTION:'google-oauth2'}});const proof='test-proof',challenge=createHash('sha256').update(proof).digest('base64url');const a=broker.start('google',challenge);const url=new URL(a.authorizationUrl);assert.equal(await broker.callback(new URLSearchParams({state:url.searchParams.get('state'),error:'access_denied'})),'failed');assert.equal(broker.get(a.flowId,proof).status,'failed');assert.throws(()=>broker.get(a.flowId,'wrong'));now+=600001;assert.throws(()=>broker.get(a.flowId,proof));});
