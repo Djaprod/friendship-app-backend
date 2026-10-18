@@ -5,6 +5,12 @@ export function databaseConfig(env=process.env) {
  let url;try {url=new URL(value);} catch {throw Object.assign(new Error(),{code:'ARTII_DATABASE_URL'});}
  if(!['postgres:','postgresql:'].includes(url.protocol))throw Object.assign(new Error(),{code:'ARTII_DATABASE_URL'});
  if(url.port==='6543')throw Object.assign(new Error(),{code:'ARTII_TRANSACTION_POOL'});
+ // Accept a raw password separately so dashboard pastes cannot corrupt URI escaping.
+ // Do not trim or unquote passwords: those characters may be intentional.
+ if(env.DATABASE_PASSWORD){
+  url.password=encodeURIComponent(env.DATABASE_PASSWORD);
+  url.searchParams.delete('password');
+ }
  for(const key of ['sslmode','sslcert','sslkey','sslrootcert'])url.searchParams.delete(key);
  const local=['localhost','127.0.0.1','::1','[::1]'].includes(url.hostname);
  const insecure=env.DATABASE_TLS==='off';
@@ -24,7 +30,7 @@ export function databaseStartupError(error,stage) {
  EAI_AGAIN:'Temporary database DNS failure. Retry and check the database hostname.',
  ECONNREFUSED:'Database connection refused. Check the host, port, project status, and network restrictions.',
  ETIMEDOUT:'Database connection timed out. Check the host, port, project status, and network restrictions.',
- '28P01':'Database password authentication failed. Check the database password and URI-encode special characters.',
+ '28P01':'Database password authentication failed. Set DATABASE_PASSWORD to the exact database password (no URI encoding), and verify the Session pooler username/project in DATABASE_URL. This is not an API key or account login password.',
  '28000':'Database authentication rejected. Copy the complete Session pooler username, including the project reference.',
  '42501':'Database role lacks required privileges. Use the project database owner for initial schema migration.',
  '3D000':'Database does not exist. Verify the database name in the connection URI.',

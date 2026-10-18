@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {databaseConfig,databaseStartupError} from './database-config.mjs';
+import pg from 'pg';
+test('raw database passwords reach the driver unchanged and override URL passwords',()=>{
+ for(const password of ['p@ss:/?#%+word','literal%40value',' spaces and "quotes" ','é🔐']){
+  const c=databaseConfig({DATABASE_URL:'postgres://postgres.project:old@db.example:5432/postgres?password=stale',DATABASE_PASSWORD:password});
+  const client=new pg.Client(c);
+  assert.equal(client.connectionParameters.password,password);
+  assert.equal(client.connectionParameters.user,'postgres.project');
+  assert.equal(client.connectionParameters.host,'db.example');
+  assert.equal(client.connectionParameters.ssl.rejectUnauthorized,true);
+ }
+});
+test('blank separate password preserves existing URI credentials',()=>{
+ const c=databaseConfig({DATABASE_URL:'postgres://u:p%40ss@db.example/postgres',DATABASE_PASSWORD:''});
+ assert.equal(new pg.Client(c).connectionParameters.password,'p@ss');
+});
 test('database URL normalizes pasted quotes and preserves verified TLS',()=>{
  const c=databaseConfig({DATABASE_URL:' "postgresql://user:password@db.example:5432/postgres?sslmode=require" '});
  assert.equal(c.connectionString,'postgresql://user:password@db.example:5432/postgres');assert.equal(c.ssl.rejectUnauthorized,true);
