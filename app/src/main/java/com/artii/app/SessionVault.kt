@@ -11,8 +11,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 // Session tokens are encrypted with a non-exportable Android Keystore key, never backed up.
-class SessionVault(context:Context){
- private val prefs=context.getSharedPreferences("artii-session",Context.MODE_PRIVATE)
+class SessionVault(context:Context,storageName:String="artii-session"){
+ private val prefs=context.getSharedPreferences(storageName,Context.MODE_PRIVATE)
  private fun key():SecretKey{
   val store=KeyStore.getInstance("AndroidKeyStore").apply{load(null)}
   return (store.getKey("artii-session-v2",null) as? SecretKey)?:KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore").apply{init(KeyGenParameterSpec.Builder("artii-session-v2",KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())}.generateKey()

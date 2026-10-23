@@ -42,7 +42,7 @@ class Api(var base:String,var token:String="") {
         if(!BuildConfig.DEBUG) require(url.protocol=="https"){"A secure HTTPS server is required"}
         val conn=url.openConnection() as HttpURLConnection
         try {
-            conn.requestMethod=method;conn.connectTimeout=5000;conn.readTimeout=8000
+            conn.requestMethod=method;conn.connectTimeout=15000;conn.readTimeout=30000
             conn.setRequestProperty("Content-Type","application/json")
             if(token.isNotBlank())conn.setRequestProperty("Authorization","Bearer $token")
             if(body!=null){conn.doOutput=true;conn.outputStream.use{it.write(body.toString().toByteArray())}}
@@ -51,7 +51,7 @@ class Api(var base:String,var token:String="") {
             val result=JSONObject(text)
             if(status !in 200..299)error(result.optString("error","Request failed ($status)"))
             result
-        }catch(e:java.net.SocketTimeoutException){error("Artii could not connect in time. Check your connection and that the test server is running.")}catch(e:java.io.IOException){error("Cannot reach Artii. For this test build, start the phone test server on your PC and connect your phone by USB.")}finally{conn.disconnect()}
+        }catch(e:java.net.SocketTimeoutException){throw java.io.IOException("Artii is taking longer to respond. Check your internet connection and try again.",e)}catch(e:java.io.IOException){throw java.io.IOException("Cannot reach Artii right now. Check your internet connection and try again.",e)}finally{conn.disconnect()}
     }
 }
 

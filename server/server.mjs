@@ -6,6 +6,7 @@ import {promisify} from 'node:util';
 import {createEncounters,defaults} from './encounters.mjs';
 import {createBilling} from './billing.mjs';
 import {createSocial} from './social.mjs';
+import {socialReturnPage} from './social-return.mjs';
 const derive=promisify(scrypt);
 const usernameKey=v=>typeof v==='string'?v.trim().toLowerCase():'';
 const usernameValid=v=>/^[a-z][a-z0-9_]{2,23}$/.test(v)&&!['admin','administrator','artii','support','moderator','system'].includes(v);
@@ -70,8 +71,8 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
       if(path==='/auth/social/start'&&req.method==='POST'){const k='social:'+key;limits.set(k,(limits.get(k)||0)+1);if(limits.get(k)>10)fail(429,'Please wait before trying again');return send(200,social.start(b.provider,b.challenge));}
       if(path==='/auth/social/callback'&&req.method==='GET'){
         const status=await social.callback(url.searchParams);
-        res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff'});
-        res.end('<!doctype html><meta name="viewport" content="width=device-width"><title>Artii sign-in</title><body style="background:#10162c;color:#f4efff;font:18px system-ui;padding:40px"><h1>artii</h1><p>'+(status==='verified'?'Your identity is verified.':'Sign-in was cancelled or could not be verified.')+'</p><p><a style="color:#f28ec7" href="artii://auth/complete">Open Artii to continue</a></p>');return;
+        const page=socialReturnPage(status);
+        res.writeHead(200,page.headers);res.end(page.html);return;
       }
       if(['/auth/social/result','/auth/social/complete'].includes(path)&&req.method==='POST'){
         const f=social.get(b.flowId,b.proof);if(f.status==='failed')fail(401,f.error);if(f.status!=='verified')return send(200,{status:'waiting'});
