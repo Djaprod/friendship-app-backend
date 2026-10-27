@@ -40,3 +40,34 @@ test('social first signup requires a username and age confirmation; handoff is p
  }finally{await f.close()}});
 
 test('social attempts expire and cancellation does not create a session',async()=>{let now=10000;const broker=createSocial({clock:()=>now,env:{AUTH_ISSUER:'https://tenant.example/',AUTH_CLIENT_ID:'client',AUTH_CLIENT_SECRET:'secret',PUBLIC_ORIGIN:'https://artii.example',AUTH_GOOGLE_CONNECTION:'google-oauth2'}});const proof='test-proof',challenge=createHash('sha256').update(proof).digest('base64url');const a=broker.start('google',challenge);const url=new URL(a.authorizationUrl);assert.equal(await broker.callback(new URLSearchParams({state:url.searchParams.get('state'),error:'access_denied'})),'failed');assert.equal(broker.get(a.flowId,proof).status,'failed');assert.throws(()=>broker.get(a.flowId,'wrong'));now+=600001;assert.throws(()=>broker.get(a.flowId,proof));});
+
+for (const [provider, subject] of [['google','google-oauth2|returning'],['facebook','facebook|returning']]) {
+ test(`${provider} returning account keeps edited username after persisted reload and ignores replacement username`, async()=>{
+  let nonce;
+  const options={socialOptions:{env:{AUTH_ISSUER:'https://tenant.example/',AUTH_CLIENT_ID:'client',AUTH_CLIENT_SECRET:'test-secret',PUBLIC_ORIGIN:'https://artii.example',AUTH_GOOGLE_CONNECTION:'google-oauth2',AUTH_FACEBOOK_CONNECTION:'facebook'},fetcher:async url=>({ok:true,json:async()=>url.endsWith('jwks.json')?{keys:[jwk]}:{id_token:jwt({...claims(),sub:subject,nonce})}})}};
+  const login=async f=>{const proof=randomBytes(32).toString('base64url');const challenge=createHash('sha256').update(proof).digest('base64url');const start=await f.req('/auth/social/start',{provider,challenge});const url=new URL(start.data.authorizationUrl);nonce=url.searchParams.get('nonce');await f.req('/auth/social/callback?state='+url.searchParams.get('state')+'&code=verified');return {flowId:start.data.flowId,proof};};
+  let f=await fixture(options);
+  try {
+   const first=await login(f);assert.equal((await f.req('/auth/social/result',first)).data.status,'username_required');
+   const created=await f.req('/auth/social/complete',{...first,username:'first_name',adult:true});assert.equal(created.status,200);
+   await f.req('/profile',{username:'my_saved_name'},created.data.token,'PUT');
+   const persisted=JSON.parse(await readFile(f.file,'utf8'));await f.close();f=await fixture(options,persisted);
+   const returning=await f.req('/auth/social/result',await login(f));assert.equal(returning.data.status,'authenticated');assert.equal(returning.data.user.id,created.data.user.id);assert.equal(returning.data.user.username,'my_saved_name');
+   const repeated=await f.req('/auth/social/complete',{...await login(f),username:'do_not_replace',adult:false});assert.equal(repeated.data.status,'authenticated');assert.equal(repeated.data.user.username,'my_saved_name');
+   assert.equal(JSON.parse(await readFile(f.file,'utf8')).users.length,1);
+  } finally {await f.close();}
+ });
+}
+
+test('existing email accounts are not asked to recreate a username through a new social identity',async()=>{
+ let nonce;
+ const f=await fixture({socialOptions:{env:{AUTH_ISSUER:'https://tenant.example/',AUTH_CLIENT_ID:'client',AUTH_CLIENT_SECRET:'test-secret',PUBLIC_ORIGIN:'https://artii.example',AUTH_GOOGLE_CONNECTION:'google-oauth2'},fetcher:async url=>({ok:true,json:async()=>url.endsWith('jwks.json')?{keys:[jwk]}:{id_token:jwt({...claims(),nonce})}})}});
+ try {
+  await f.req('/auth/register',account('existing_name','verified@example.com'));
+  const proof=randomBytes(32).toString('base64url');const challenge=createHash('sha256').update(proof).digest('base64url');
+  const start=await f.req('/auth/social/start',{provider:'google',challenge});const url=new URL(start.data.authorizationUrl);nonce=url.searchParams.get('nonce');
+  await f.req('/auth/social/callback?state='+url.searchParams.get('state')+'&code=verified');
+  const result=await f.req('/auth/social/result',{flowId:start.data.flowId,proof});assert.equal(result.status,409);assert.match(result.data.error,/original method/);assert.equal(result.data.token,undefined);
+  const stored=JSON.parse(await readFile(f.file,'utf8'));assert.equal(stored.users.length,1);assert.equal(stored.users[0].username,'existing_name');
+ } finally {await f.close();}
+});

@@ -50,7 +50,7 @@ private val Danger=Color(0xFFFF879F)
  var pending by remember{mutableStateOf(runCatching{org.json.JSONObject(pendingVault.read()).takeIf{it.getLong("expires")>System.currentTimeMillis()&&it.getString("server")==server}}.getOrNull())}
  var flow by remember{mutableStateOf<String?>(null)}
  var proof by remember{mutableStateOf(pending?.optString("proof")?:"")}
- var socialStatus by remember{mutableStateOf("Finish signing in with Google, then return to Artii.")}
+ var socialStatus by remember{mutableStateOf("Finish signing in in your browser, then return to Artii.")}
  var operation by remember{mutableStateOf<Job?>(null)}
  val scope=rememberCoroutineScope()
  val waiting=pending!=null&&flow==null
@@ -61,7 +61,7 @@ private val Danger=Color(0xFFFF879F)
  val colors=OutlinedTextFieldDefaults.colors(focusedBorderColor=Color(0xFFB79CFF),cursorColor=Coral,focusedLabelColor=Coral,unfocusedBorderColor=Color(0xFF4C4F69),errorBorderColor=Danger,errorSupportingTextColor=Danger)
  LaunchedEffect(server,retry){
   ready=false;providers=emptySet();connection="Checking connection…";delay(350)
-  try{val config=m.configureServer(server).request("/auth/config");providers=listOf("google","facebook","apple").filter{config.getJSONObject("providers").optBoolean(it)}.toSet();ready=true;connection="Connected to Artii"}
+  try{val config=m.configureServer(server).request("/auth/config");providers=listOf("google","facebook").filter{config.getJSONObject("providers").optBoolean(it)}.toSet();ready=true;connection="Connected to Artii"}
   catch(e:CancellationException){throw e}catch(e:Exception){connection=e.message?:"Unable to connect"}
  }
  LaunchedEffect(username,needUsername,server,ready,retry){
@@ -95,13 +95,13 @@ private val Danger=Color(0xFFFF879F)
    Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Image(painterResource(R.drawable.artii_logo),null,Modifier.size(44.dp));Text("Artii",fontSize=28.sp,fontWeight=FontWeight.Bold)}
     AnimatedContent(targetState=if(flow!=null)"Make it yours." else if(register)"Create your account" else "Welcome back",label="auth-title"){Title(it)}
-    Text(if(flow!=null)"Your identity is verified. Choose your unique Artii username to finish." else if(register)"Create your Artii identity and find your people." else "Log in to pick up where you left off.",color=Muted,fontSize=14.sp)
+    Text(if(flow!=null)"Welcome to Artii! Choose your username once. Future sign-ins will use this same profile." else if(register)"Create your Artii identity and find your people." else "Log in to pick up where you left off.",color=Muted,fontSize=14.sp)
    }
    Surface(modifier=Modifier.artiiPanel(26),shape=RoundedCornerShape(26.dp),color=Color.Transparent){
     Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
      if(waiting){CircularProgressIndicator(Modifier.size(28.dp));Text(socialStatus,color=Muted)}
      if(flow==null&&!waiting){
-      listOf("google" to "Google","facebook" to "Facebook","apple" to "Apple").forEach{(id,label)->
+      listOf("google" to "Google","facebook" to "Facebook").forEach{(id,label)->
        OutlinedButton(onClick={launchAction(id){
         val api=m.configureServer(server);val bytes=ByteArray(32).also{SecureRandom().nextBytes(it)};proof=Base64.encodeToString(bytes,Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         val challenge=Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(proof.toByteArray()),Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
@@ -110,11 +110,11 @@ private val Danger=Color(0xFFFF879F)
         pendingVault.save(saved.toString());pending=saved
         context.startActivity(Intent(Intent.ACTION_VIEW,uri))
        }},enabled=!locked&&ready&&id in providers,modifier=Modifier.fillMaxWidth().heightIn(min=50.dp),shape=RoundedCornerShape(14.dp),colors=ButtonDefaults.outlinedButtonColors(contentColor=Ink)){
-        if(active==id)CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)else Image(painterResource(when(id){"google"->R.drawable.ic_google;"facebook"->R.drawable.ic_facebook;else->R.drawable.ic_apple}),null,Modifier.size(22.dp))
+        if(active==id)CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)else Image(painterResource(if(id=="google")R.drawable.ic_google else R.drawable.ic_facebook),null,Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp));Text("Continue with $label",fontWeight=FontWeight.SemiBold)
        }
       }
-      if(providers.size<3)Text("Unavailable sign-in options are still being set up.",fontSize=11.sp,color=Muted)
+      if(providers.size<2)Text("Unavailable sign-in options are still being set up.",fontSize=11.sp,color=Muted)
       Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){HorizontalDivider(Modifier.weight(1f));Text("or use email",fontSize=12.sp,color=Muted);HorizontalDivider(Modifier.weight(1f))}
       OutlinedTextField(email,{email=it.take(200)},enabled=!locked,label={Text(if(register)"01  Email address" else "Email address")},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Email,autoCorrect=false),isError=email.isNotEmpty()&&!emailValid,supportingText={if(email.isNotEmpty()&&!emailValid)Text("Enter a valid email address")},colors=colors,modifier=Modifier.fillMaxWidth())
       OutlinedTextField(password,{password=it.take(128)},enabled=!locked,label={Text(if(register)"02  Password" else "Password")},singleLine=true,visualTransformation=if(visible)VisualTransformation.None else PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrect=false),trailingIcon={IconButton(onClick={visible=!visible},enabled=!locked){Icon(painterResource(if(visible)R.drawable.ic_eye_off else R.drawable.ic_eye),if(visible)"Hide password" else "Show password")}},supportingText={if(register)Text("10–128 characters · use a unique password")},isError=register&&password.isNotEmpty()&&password.length<10,colors=colors,modifier=Modifier.fillMaxWidth())

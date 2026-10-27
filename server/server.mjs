@@ -77,6 +77,9 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
       if(['/auth/social/result','/auth/social/complete'].includes(path)&&req.method==='POST'){
         const f=social.get(b.flowId,b.proof);if(f.status==='failed')fail(401,f.error);if(f.status!=='verified')return send(200,{status:'waiting'});
         let u=db.users.find(u=>u.identity?.issuer===f.identity.issuer&&u.identity?.subject===f.identity.subject);
+        // Resolve existing accounts before offering first-time username setup.
+        // Matching email alone is not proof of ownership of an existing account.
+        if(!u&&f.identity.email&&db.users.some(existing=>existing.email===f.identity.email))fail(409,'This Artii account already has a username. Sign in with the original method to keep your profile.');
         if(!u&&path.endsWith('/complete')){
           if(b.adult!==true)fail(400,'This alpha is for adults 18 and over');
           const username=claimUsername(b.username);
