@@ -67,7 +67,26 @@ test('existing email accounts are not asked to recreate a username through a new
   const proof=randomBytes(32).toString('base64url');const challenge=createHash('sha256').update(proof).digest('base64url');
   const start=await f.req('/auth/social/start',{provider:'google',challenge});const url=new URL(start.data.authorizationUrl);nonce=url.searchParams.get('nonce');
   await f.req('/auth/social/callback?state='+url.searchParams.get('state')+'&code=verified');
-  const result=await f.req('/auth/social/result',{flowId:start.data.flowId,proof});assert.equal(result.status,409);assert.match(result.data.error,/original method/);assert.equal(result.data.token,undefined);
+  const result=await f.req('/auth/social/result',{flowId:start.data.flowId,proof});assert.equal(result.status,200);assert.equal(result.data.status,'link_required');assert.equal(result.data.token,undefined);
+  const wrong=await f.req('/auth/social/complete',{flowId:start.data.flowId,proof,linkPassword:'WrongPassword123!'});assert.equal(wrong.status,401);
+  const linked=await f.req('/auth/social/complete',{flowId:start.data.flowId,proof,linkPassword:'VeryStrongPass123!'});assert.equal(linked.data.status,'authenticated');assert.equal(linked.data.user.username,'existing_name');
   const stored=JSON.parse(await readFile(f.file,'utf8'));assert.equal(stored.users.length,1);assert.equal(stored.users[0].username,'existing_name');
  } finally {await f.close();}
+});
+
+for(const [subject,email,verified,provider,automatic] of [
+ ['google-oauth2|gmail','saveduser@gmail.com',true,'google',true],
+ ['facebook|gmail','saveduser@gmail.com',true,'facebook',false],
+ ['google-oauth2|gmail','saveduser@gmail.com',false,'google',false]
+])test('Google profile recovery '+subject+' verified='+verified,async()=>{
+ let nonce;const f=await fixture({socialOptions:{env:{AUTH_ISSUER:'https://tenant.example/',AUTH_CLIENT_ID:'client',AUTH_CLIENT_SECRET:'test-secret',PUBLIC_ORIGIN:'https://artii.example',AUTH_GOOGLE_CONNECTION:'google-oauth2',AUTH_FACEBOOK_CONNECTION:'facebook'},fetcher:async url=>({ok:true,json:async()=>url.endsWith('jwks.json')?{keys:[jwk]}:{id_token:jwt({...claims(),sub:subject,email,email_verified:verified,nonce})}})}});
+ try{
+ const original=await f.req('/auth/register',account('saved_name',email));
+ await f.req('/profile',{name:'My edited name',bio:'My saved bio'},original.data.token,'PUT');
+ const login=async()=>{const proof=randomBytes(32).toString('base64url');const challenge=createHash('sha256').update(proof).digest('base64url');const start=await f.req('/auth/social/start',{provider,challenge});const url=new URL(start.data.authorizationUrl);nonce=url.searchParams.get('nonce');await f.req('/auth/social/callback?state='+url.searchParams.get('state')+'&code=verified');return f.req('/auth/social/result',{flowId:start.data.flowId,proof});};
+ const result=await login();
+ if(automatic){assert.equal(result.data.status,'authenticated');assert.equal(result.data.user.id,original.data.user.id);assert.equal(result.data.user.username,'saved_name');assert.equal(result.data.user.name,'My edited name');assert.equal(result.data.user.bio,'My saved bio');const again=await login();assert.equal(again.data.user.id,original.data.user.id);}
+ else{assert.notEqual(result.data.status,'authenticated');assert.equal(result.data.token,undefined);}
+ assert.equal(JSON.parse(await readFile(f.file,'utf8')).users.length,1);
+ }finally{await f.close()}
 });

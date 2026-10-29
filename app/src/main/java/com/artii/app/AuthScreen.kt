@@ -45,6 +45,7 @@ private val Danger=Color(0xFFFF879F)
  var providers by remember{mutableStateOf(emptySet<String>())}
  var retry by remember{mutableIntStateOf(0)}
  var ready by remember{mutableStateOf(false)}
+ var linking by remember{mutableStateOf(false)}
  val context=LocalContext.current
  val pendingVault=remember{SessionVault(context,"artii-pending-login")}
  var pending by remember{mutableStateOf(runCatching{org.json.JSONObject(pendingVault.read()).takeIf{it.getLong("expires")>System.currentTimeMillis()&&it.getString("server")==server}}.getOrNull())}
@@ -57,16 +58,16 @@ private val Danger=Color(0xFFFF879F)
  val locked=active!=null||waiting
  val emailValid=android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
  val usernameValid=Regex("^[a-zA-Z][a-zA-Z0-9_]{2,23}$").matches(username.trim())
- val needUsername=!waiting&&(register||flow!=null)
+ val needUsername=!waiting&&!linking&&(register||flow!=null)
  val colors=OutlinedTextFieldDefaults.colors(focusedBorderColor=Color(0xFFB79CFF),cursorColor=Coral,focusedLabelColor=Coral,unfocusedBorderColor=Color(0xFF4C4F69),errorBorderColor=Danger,errorSupportingTextColor=Danger)
  LaunchedEffect(server,retry){
-  ready=false;providers=emptySet();connection="Checking connection…";delay(350)
+  ready=false;connection="Checking connection…"
   try{val config=m.configureServer(server).request("/auth/config");providers=listOf("google").filter{config.getJSONObject("providers").optBoolean(it)}.toSet();ready=true;connection="Connected to Artii"}
   catch(e:CancellationException){throw e}catch(e:Exception){connection=e.message?:"Unable to connect"}
  }
  LaunchedEffect(username,needUsername,server,ready,retry){
   available=null;usernameError=null;checking=false
-  if(needUsername&&usernameValid&&ready){checking=true;try{delay(400);val result=m.configureServer(server).request("/auth/username?username="+java.net.URLEncoder.encode(username.trim(),"UTF-8"));available=result.getBoolean("available");if(!result.optBoolean("valid"))usernameError="Choose another username"}catch(e:CancellationException){throw e}catch(e:Exception){usernameError="Couldn't check this username. Retry your connection."}finally{checking=false}}
+  if(needUsername&&usernameValid){checking=true;try{delay(400);val result=m.configureServer(server).request("/auth/username?username="+java.net.URLEncoder.encode(username.trim(),"UTF-8"));available=result.getBoolean("available");if(!result.optBoolean("valid"))usernameError="Choose another username"}catch(e:CancellationException){throw e}catch(e:Exception){usernameError="Couldn't check this username. Retry your connection."}finally{checking=false}}
  }
  LaunchedEffect(pending,flow){
   val saved=pending?:return@LaunchedEffect
@@ -78,6 +79,7 @@ private val Danger=Color(0xFFFF879F)
     val api=m.configureServer(saved.getString("server"))
     val result=api.request("/auth/social/result","POST",json("flowId" to saved.getString("flowId"),"proof" to saved.getString("proof")))
     when(result.getString("status")){
+     "link_required"->{proof=saved.getString("proof");flow=saved.getString("flowId");linking=true;password="";error=null;break}
      "username_required"->{proof=saved.getString("proof");flow=saved.getString("flowId");error=null;break}
      "authenticated"->{m.acceptSession(api,result);pendingVault.clear();pending=null;password="";onDone();break}
      else->socialStatus="Finish signing in in your browser, then return to Artii."
@@ -85,7 +87,7 @@ private val Danger=Color(0xFFFF879F)
    }catch(e:CancellationException){throw e}
    catch(e:java.io.IOException){socialStatus="Reconnecting to Artii… Your sign-in is still waiting."}
    catch(e:Exception){pendingVault.clear();pending=null;error=e.message?:"Please try signing in again.";break}
-   delay(2000)
+   delay(500)
   }
  }
  fun launchAction(key:String,block:suspend()->Unit){if(active!=null)return;active=key;error=null;operation=scope.launch{try{block()}catch(e:TimeoutCancellationException){error="Sign-in timed out. Please try again."}catch(e:CancellationException){throw e}catch(e:Exception){error=e.message?:"Please try again"}finally{active=null}}}
@@ -94,8 +96,8 @@ private val Danger=Color(0xFFFF879F)
    TextButton(onClick=onDone,enabled=!locked){Text("← Back")}
    Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Image(painterResource(R.drawable.artii_logo),null,Modifier.size(44.dp));Text("Artii",fontSize=28.sp,fontWeight=FontWeight.Bold)}
-    AnimatedContent(targetState=if(flow!=null)"Make it yours." else if(register)"Create your account" else "Welcome back",label="auth-title"){Title(it)}
-    Text(if(flow!=null)"Welcome to Artii! Choose your username once. Future sign-ins will use this same profile." else if(register)"Create your Artii identity and find your people." else "Log in to pick up where you left off.",color=Muted,fontSize=14.sp)
+    AnimatedContent(targetState=if(linking)"Keep your profile." else if(flow!=null)"Make it yours." else if(register)"Create your account" else "Welcome back",label="auth-title"){Title(it)}
+    Text(if(linking)"Enter your existing Artii password once to link Google. Your username, friends and settings stay the same." else if(flow!=null)"Welcome to Artii! Choose your username once. Future sign-ins will use this same profile." else if(register)"Create your Artii identity and find your people." else "Log in to pick up where you left off.",color=Muted,fontSize=14.sp)
    }
    Surface(modifier=Modifier.artiiPanel(26),shape=RoundedCornerShape(26.dp),color=Color.Transparent){
     Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
@@ -109,7 +111,7 @@ private val Danger=Color(0xFFFF879F)
         val saved=json("flowId" to start.getString("flowId"),"proof" to proof,"server" to server,"expires" to (System.currentTimeMillis()+600000))
         pendingVault.save(saved.toString());pending=saved
         context.startActivity(Intent(Intent.ACTION_VIEW,uri))
-       }},enabled=!locked&&ready&&id in providers,modifier=Modifier.fillMaxWidth().heightIn(min=50.dp),shape=RoundedCornerShape(14.dp),colors=ButtonDefaults.outlinedButtonColors(contentColor=Ink)){
+       }},enabled=!locked&&(!ready||id in providers),modifier=Modifier.fillMaxWidth().heightIn(min=50.dp),shape=RoundedCornerShape(14.dp),colors=ButtonDefaults.outlinedButtonColors(contentColor=Ink)){
         if(active==id)CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)else Image(painterResource(R.drawable.ic_google),null,Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp));Text("Continue with $label",fontWeight=FontWeight.SemiBold)
        }
@@ -125,23 +127,22 @@ private val Danger=Color(0xFFFF879F)
        Row(verticalAlignment=Alignment.CenterVertically){Checkbox(adult,{adult=it},enabled=!locked);Text("I am 18 or older",fontSize=13.sp)}
       }
      }
+     if(linking)OutlinedTextField(password,{password=it.take(128)},label={Text("Existing Artii password")},visualTransformation=PasswordVisualTransformation(),enabled=!locked,modifier=Modifier.fillMaxWidth())
      error?.let{Text(it,color=Danger,fontSize=13.sp)}
      if(!waiting)Button(onClick={launchAction("email"){
-      if(flow!=null){val api=m.configureServer(server);val r=api.request("/auth/social/complete","POST",json("flowId" to flow,"proof" to proof,"username" to username.trim(),"adult" to adult));m.acceptSession(api,r);pendingVault.clear();pending=null}
+      if(flow!=null){val api=m.configureServer(server);val r=api.request("/auth/social/complete","POST",json("flowId" to flow,"proof" to proof,"username" to username.trim(),"adult" to adult,"linkPassword" to if(linking)password else null));m.acceptSession(api,r);pendingVault.clear();pending=null}
       else m.authenticate(server,email,password,username,register,adult)
       password="";onDone()
-     }},enabled=!locked&&ready&&(if(flow!=null)true else emailValid&&password.length in 10..128)&&(!needUsername||adult&&usernameValid&&available==true&&!checking),modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(15.dp)){
+     }},enabled=!locked&&(!linking||password.isNotBlank())&&(if(flow!=null)true else emailValid&&password.length in 10..128)&&(!needUsername||adult&&usernameValid&&available!=false&&usernameError==null&&!checking),modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),shape=RoundedCornerShape(15.dp)){
       if(active=="email"){CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp);Spacer(Modifier.width(10.dp))}
-      Text(if(flow!=null)"Finish creating account" else if(register)"Create account" else "Log in",fontWeight=FontWeight.Bold)
+      Text(if(linking)"Link Google and sign in" else if(flow!=null)"Finish creating account" else if(register)"Create account" else "Log in",fontWeight=FontWeight.Bold)
      }
-     if(locked)TextButton(onClick={operation?.cancel();pendingVault.clear();pending=null;flow=null;proof="";error="Sign-in cancelled. You can try again."},modifier=Modifier.fillMaxWidth()){Text("Cancel sign-in")}
+     if(locked)TextButton(onClick={operation?.cancel();pendingVault.clear();pending=null;flow=null;linking=false;proof="";error="Sign-in cancelled. You can try again."},modifier=Modifier.fillMaxWidth()){Text("Cancel sign-in")}
      if(flow==null)TextButton(onClick={register=!register;error=null;visible=false},enabled=!locked,modifier=Modifier.fillMaxWidth()){Text(if(register)"Already have an account? Log in" else "New to Artii? Sign up")}
-     else TextButton(onClick={pendingVault.clear();pending=null;flow=null;proof=""},enabled=!locked){Text("Use a different sign-in method")}
+     else TextButton(onClick={pendingVault.clear();pending=null;flow=null;linking=false;proof=""},enabled=!locked){Text("Use a different sign-in method")}
     }
    }
-   Text(connection,color=if(ready)Good else Muted,fontSize=12.sp)
    if(!ready){TextButton(onClick={retry++},enabled=!locked){Text("Retry connection")};if(BuildConfig.DEBUG&&BuildConfig.API_URL.isBlank())Text("Test build: connect your phone by USB and run Start-Artii-Phone-Test.cmd on your PC. No server address needs to be typed.",color=Muted,fontSize=12.sp)}
-   if(BuildConfig.DEBUG){TextButton(onClick={settings=!settings},enabled=!locked){Text("Advanced test connection")};AnimatedVisibility(settings){Column{OutlinedTextField(server,{server=it;ready=false},enabled=!locked,label={Text("Test server address")},singleLine=true,modifier=Modifier.fillMaxWidth());TextButton(onClick={server=m.defaultServer;retry++},enabled=!locked){Text("Reset to automatic test address")}}}}
    Spacer(Modifier.height(12.dp))
   }
  }

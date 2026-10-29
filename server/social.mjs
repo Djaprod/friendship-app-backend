@@ -28,7 +28,7 @@ export function createSocial({clock=()=>Date.now(),env=process.env,fetcher=fetch
    prune();if(!ready||!Object.hasOwn(connections,provider)||!connections[provider])fail(503,'This sign-in option has not been activated yet. Use email to continue.');
    if(!/^[A-Za-z0-9_-]{43}$/.test(challenge||''))fail(400,'Invalid sign-in request');if(flows.size>=1000)fail(429,'Please try again later');
    const id=random(),state=random(),nonce=random(),verifier=random();
-   flows.set(id,{id,state,nonce,verifier,challenge,expires:clock()+600000,status:'waiting'});
+   flows.set(id,{id,provider,state,nonce,verifier,challenge,expires:clock()+600000,status:'waiting'});
    const url=new URL(issuer+'authorize');url.search=new URLSearchParams({client_id:clientId,redirect_uri:callback,response_type:'code',scope:'openid email',state,nonce,code_challenge:digest(verifier),code_challenge_method:'S256',connection:connections[provider]}).toString();
    return {flowId:id,authorizationUrl:url.href};
   },

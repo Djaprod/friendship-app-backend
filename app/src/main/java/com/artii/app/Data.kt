@@ -11,8 +11,8 @@ import java.net.URL
 data class Person(val id:String,val name:String,val country:String="",val bio:String="",val interests:List<String> = emptyList(),val avatar:String="",val language:String="English",val username:String="",val badgeColor:String="",val online:Boolean=false,val lastSeen:Long=0,val discoverOnline:Boolean=false)
 data class Room(val id:String,val name:String,val group:Boolean=false,val members:List<String> = emptyList(),val last:String="Say a little hello")
 data class Reaction(val emoji:String,val count:Int,val mine:Boolean)
-data class Message(val id:String,val from:String,val name:String,val text:String,val time:Long=System.currentTimeMillis(),val deleted:Boolean=false,val reactions:List<Reaction> = emptyList(),val delivered:List<String> = emptyList(),val read:List<String> = emptyList(),val attachment:JSONObject?=null)
-fun JSONObject.message()=Message(getString("id"),getString("from"),getString("name"),optString("text"),getLong("time"),optBoolean("deleted"),optJSONArray("reactions")?.objects()?.map{Reaction(it.getString("emoji"),it.getInt("count"),it.optBoolean("mine"))}?:emptyList(),optJSONArray("delivered")?.strings()?:emptyList(),optJSONArray("read")?.strings()?:emptyList(),optJSONObject("attachment"))
+data class Message(val id:String,val from:String,val name:String,val text:String,val time:Long=System.currentTimeMillis(),val deleted:Boolean=false,val reactions:List<Reaction> = emptyList(),val delivered:List<String> = emptyList(),val read:List<String> = emptyList(),val attachment:JSONObject?=null,val failed:Boolean=false,val clientId:String="")
+fun JSONObject.message()=Message(getString("id"),getString("from"),getString("name"),optString("text"),getLong("time"),optBoolean("deleted"),optJSONArray("reactions")?.objects()?.map{Reaction(it.getString("emoji"),it.getInt("count"),it.optBoolean("mine"))}?:emptyList(),optJSONArray("delivered")?.strings()?:emptyList(),optJSONArray("read")?.strings()?:emptyList(),optJSONObject("attachment"),clientId=optString("clientId"))
 data class FriendRequest(val id:String,val person:Person)
 data class Place(val person:Person,val lat:Double,val lon:Double,val updated:Long,val expires:Long=Long.MAX_VALUE)
 data class CallInfo(val id:String,val from:String,val to:String,val status:String)
@@ -99,8 +99,8 @@ class ArtiiModel(context:Context) {
     fun action(block:suspend()->Unit) {scope.launch {busy=true;try{block()}catch(e:CancellationException){throw e}catch(e:Exception){error=e.message?:"Something went wrong"}finally{busy=false}}}
     fun setFocus(value:Boolean){focused=value;live.focus(value);if(value)requestChatSync()}
     fun requestChatSync(){chatEvents.trySend(Unit)}
-    private suspend fun syncChat(){refresh();val inbox=api.request("/inbox").getJSONArray("messages").objects();inbox.groupBy{it.getString("room")}.forEach{(room,list)->api.request("/rooms/"+room+"/receipts","POST",json("ids" to list.map{it.getString("id")},"read" to false))};selectedRoom?.let{loadMessages(it)}}
-    fun startPolling(){live.start();if(poll?.isActive==true)return;poll=scope.launch{while(isActive){if(!demo)try{refresh();selectedRoom?.let{loadMessages(it)}}catch(e:CancellationException){throw e}catch(e:Exception){connected=false;places=places.filter{System.currentTimeMillis()<it.expires}};delay(3000)}}}
+    private suspend fun syncChat(){selectedRoom?.let{loadMessages(it)};refresh();val inbox=api.request("/inbox").getJSONArray("messages").objects();inbox.groupBy{it.getString("room")}.forEach{(room,list)->api.request("/rooms/"+room+"/receipts","POST",json("ids" to list.map{it.getString("id")},"read" to false))};selectedRoom?.let{loadMessages(it)}}
+    fun startPolling(){live.start();if(poll?.isActive==true)return;poll=scope.launch{while(isActive){if(!demo)try{refresh();if(!chatConnected)selectedRoom?.let{loadMessages(it)}}catch(e:CancellationException){throw e}catch(e:Exception){connected=false;places=places.filter{System.currentTimeMillis()<it.expires}};delay(3000)}}}
     fun stopPolling(){live.stop();poll?.cancel();poll=null}
     suspend fun refresh(){
         if(demo)return
@@ -130,13 +130,13 @@ class ArtiiModel(context:Context) {
     fun acceptSession(candidate:Api,r:JSONObject){
         val token=r.getString("token");val person=r.getJSONObject("user").person()
         tokens.save(token);prefs.edit().putString("server-v2",candidate.base).remove("token").apply()
-        live.stop();api.base=candidate.base;api.token=token;demo=false;me=person;live.start()
+        outbox.clear();retries.clear();messages=emptyList();messageRevision++;live.stop();api.base=candidate.base;api.token=token;demo=false;me=person;live.start()
         people=emptyList();friends=emptyList();rooms=emptyList();places=emptyList();requests=emptyList();sent=emptyList();selectedRoom=null;connected=true
         // Authentication succeeds independently of the first feed request. Polling can retry a slow feed.
         scope.launch{runCatching{refresh()}.onFailure{connected=false}}
     }
     suspend fun findFriendByUsername(username:String):Person = api.request("/people/by-username?username="+java.net.URLEncoder.encode(username.trim(),"UTF-8")).getJSONObject("person").person()
-    fun logout(onDone:()->Unit={}){action{if(!demo)api.request("/auth/logout","POST");live.stop();api.token="";tokens.clear();prefs.edit().remove("token").apply();demo=true;people=emptyList();friends=emptyList();rooms=emptyList();places=emptyList();requests=emptyList();incoming=emptyList();sent=emptyList();selectedRoom=null;me=Person("you","You");discovery=JSONObject();notificationsReady=false;onDone()}}
+    fun logout(onDone:()->Unit={}){action{if(!demo)api.request("/auth/logout","POST");outbox.clear();retries.clear();messages=emptyList();messageRevision++;live.stop();api.token="";tokens.clear();prefs.edit().remove("token").apply();demo=true;people=emptyList();friends=emptyList();rooms=emptyList();places=emptyList();requests=emptyList();incoming=emptyList();sent=emptyList();selectedRoom=null;me=Person("you","You");discovery=JSONObject();notificationsReady=false;onDone()}}
     fun requestFriend(p:Person)=action{require(!demo){"Sign in first"};run{api.request("/friends/request","POST",json("user" to p.id));refresh();notice="Friend request sent to ${p.name}"}}
     fun respond(request:FriendRequest,accept:Boolean)=action{api.request("/friends/respond","POST",json("request" to request.id,"accept" to accept));refresh()}
     fun openChat(p:Person)=action{
@@ -144,29 +144,61 @@ class ArtiiModel(context:Context) {
         else {selectedRoom=api.request("/rooms","POST",json("user" to p.id)).getJSONObject("room").room();loadMessages(selectedRoom!!)}
     }
     fun selectRoom(r:Room)=action{selectedRoom=r;loadMessages(r)}
-    private suspend fun loadMessages(r:Room){require(!demo){"Sign in first"}
+    private var messageRevision=0L
+    private suspend fun loadMessages(r:Room){val revision=++messageRevision;require(!demo){"Sign in first"}
         val list=api.request("/rooms/${r.id}/messages").getJSONArray("messages").objects().map{it.message()}
+        if(revision!=messageRevision)return
+        list.map{it.clientId}.filter{it.isNotBlank()}.forEach{outbox.remove(it);retries.remove(it)}
+        if(selectedRoom?.id==r.id)messages=(list.filterNot{hidden().contains(it.id)}+outbox.values.filter{it.first==r.id}.map{it.second}).distinctBy{it.id}
         val ids=list.filter{it.from!=me.id&&((focused&&!it.read.contains(me.id))||!it.delivered.contains(me.id))}.map{it.id}
         if(ids.isNotEmpty())api.request("/rooms/"+r.id+"/receipts","POST",json("ids" to ids,"read" to (focused&&foreground&&selectedRoom?.id==r.id)))
-        if(selectedRoom?.id==r.id)messages=list.filterNot{hidden().contains(it.id)}
+
     }
-    fun send(text:String,onSent:()->Unit={})=action{val r=selectedRoom?:return@action;if(text.isBlank())return@action
-        require(!demo){"Sign in first"};api.request("/rooms/${r.id}/messages","POST",json("text" to text));loadMessages(r)
-        onSent()
+    private val outbox=mutableMapOf<String,Pair<String,Message>>()
+    private val retries=mutableMapOf<String,()->Unit>()
+    fun retryMessage(id:String){retries[id]?.invoke()}
+    private fun enqueue(roomId:String,text:String="",attachment:JSONObject?=null,send:suspend(String)->JSONObject){
+        val sessionToken=api.token
+        val id="local-"+java.util.UUID.randomUUID()
+        val pending=Message(id,me.id,me.name,text,attachment=attachment)
+        outbox[id]=roomId to pending
+        if(selectedRoom?.id==roomId)messages=messages+pending
+        fun attempt(){
+            outbox[id]=roomId to pending
+            messages=messages.map{if(it.id==id)pending else it}
+            retries.remove(id)
+            scope.launch{try{
+                val result=send(id).getJSONObject("message").message()
+                if(api.token!=sessionToken)return@launch
+                outbox.remove(id);messageRevision++
+                if(selectedRoom?.id==roomId)messages=(messages.filter{it.id!=id&&it.id!=result.id}+result).sortedBy{it.time}
+            }catch(e:Exception){
+                if(api.token!=sessionToken||!outbox.containsKey(id))return@launch
+                val failed=pending.copy(failed=true);outbox[id]=roomId to failed
+                messages=messages.map{if(it.id==id)failed else it};retries[id]={attempt()}
+                error=e.message?:"Message was not sent. Tap to retry."
+            }}
+        }
+        attempt()
+    }
+    fun send(text:String,onSent:()->Unit={}){
+        val r=selectedRoom?:return;if(text.isBlank()||demo)return
+        enqueue(r.id,text){clientId->api.request("/rooms/"+r.id+"/messages","POST",json("text" to text,"clientId" to clientId))};onSent()
     }
     private fun hidden()=prefs.getStringSet("hidden-"+me.id,emptySet())?:emptySet()
     fun deleteForMe(message:Message){val ids=hidden()+message.id;prefs.edit().putStringSet("hidden-"+me.id,ids).apply();messages=messages.filter{it.id!=message.id}}
     fun messageAction(message:Message,operation:String,emoji:String="")=action{
         require(!demo){"Sign in first"};api.request("/messages/"+message.id+"/"+operation,"POST",json("emoji" to emoji));selectedRoom?.let{loadMessages(it)}
     }
-    fun sendMediaFile(roomId:String,file:java.io.File,mime:String,duration:Long=0,waveform:List<Float> = emptyList())=action{
-        try{
-            require(!demo){"Sign in to send media"};require(selectedRoom?.id==roomId){"Conversation changed. Select the file again."};require(file.length()<=mediaMaxBytes){"Attachment limit is "+mediaMaxBytes/1024/1024+" MB"}
-            uploadProgress=0f
-            val uploaded=api.uploadMedia("/rooms/"+roomId+"/media",file,mime){value->scope.launch{uploadProgress=value}}
-            api.request("/rooms/"+roomId+"/messages","POST",json("attachment" to json("uploadId" to uploaded.getString("uploadId"),"duration" to duration,"waveform" to waveform)))
-            selectedRoom?.takeIf{it.id==roomId}?.let{loadMessages(it)}
-        }finally{uploadProgress=-1f;file.delete()}
+    fun sendMediaFile(roomId:String,file:java.io.File,mime:String,duration:Long=0,waveform:List<Float> = emptyList()){
+        if(demo||selectedRoom?.id!=roomId){file.delete();return}
+        if(file.length()>mediaMaxBytes){file.delete();error="Attachment too large";return}
+        val preview=json("id" to java.util.UUID.randomUUID().toString(),"mime" to mime,"localPath" to file.absolutePath,"duration" to duration,"waveform" to waveform)
+        enqueue(roomId,attachment=preview){clientId->
+            val uploaded=api.uploadMedia("/rooms/"+roomId+"/media",file,mime){}
+            val result=api.request("/rooms/"+roomId+"/messages","POST",json("clientId" to clientId,"attachment" to json("uploadId" to uploaded.getString("uploadId"),"duration" to duration,"waveform" to waveform)))
+            file.delete();result
+        }
     }
     fun sendAttachment(attachment:JSONObject,roomId:String?=selectedRoom?.id,onSent:()->Unit={})=action{
         val room=selectedRoom?:return@action

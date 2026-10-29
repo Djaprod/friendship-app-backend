@@ -9,8 +9,8 @@ android {
         applicationId = "com.artii.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.7.3-alpha"
+        versionCode = 12
+        versionName = "0.7.4-alpha"
         val apiUrl = providers.gradleProperty("ARTII_API_URL").orElse(providers.environmentVariable("ARTII_API_URL")).orElse("").get()
         require(apiUrl.isEmpty() || (apiUrl.startsWith("https://") && !apiUrl.contains('"') && !apiUrl.contains('\\'))) { "ARTII_API_URL must be an HTTPS URL" }
         buildConfigField("String", "API_URL", "\"$apiUrl\"")

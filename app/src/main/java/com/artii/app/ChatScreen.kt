@@ -105,7 +105,7 @@ private suspend fun mediaFile(m:ArtiiModel,a:JSONObject,context:android.content.
   }else file?.delete()
  }
  fun startRecording(){
-  if(recorder!=null||m.busy)return
+  if(recorder!=null)return
   if(m.demo){m.notice="Sign in to send voice messages";return}
   runCatching{
    val file=File.createTempFile("voice-",".m4a",context.cacheDir)
@@ -152,14 +152,15 @@ private suspend fun mediaFile(m:ArtiiModel,a:JSONObject,context:android.content.
     val read=peers.isNotEmpty()&&peers.all{it in message.read}
     val delivered=peers.isNotEmpty()&&peers.all{it in message.delivered}
     Row(Modifier.fillMaxWidth(),horizontalArrangement=if(own)Arrangement.End else Arrangement.Start){
-     Surface(color=if(own)Color(0xFF19483F)else Color(0xFF25294C),border=BorderStroke(1.dp,Color(0xFF454373)),shape=RoundedCornerShape(20.dp),modifier=Modifier.widthIn(max=290.dp).combinedClickable(onClick={},onLongClick={actionMessage=message}).pointerInteropFilter{event->if(event.action==MotionEvent.ACTION_DOWN&&event.buttonState and MotionEvent.BUTTON_SECONDARY!=0){actionMessage=message;true}else false}){
+     Surface(color=Color.Transparent,shape=RoundedCornerShape(20.dp),modifier=Modifier.widthIn(max=290.dp).combinedClickable(onClick={},onLongClick={if(!message.id.startsWith("local-"))actionMessage=message}).pointerInteropFilter{event->if(event.action==MotionEvent.ACTION_DOWN&&event.buttonState and MotionEvent.BUTTON_SECONDARY!=0){actionMessage=message;true}else false}){
       Column(Modifier.padding(horizontal=12.dp,vertical=9.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
        if(room.group&&!own)Text(message.name,fontSize=11.sp,color=LiveGreen)
        if(message.deleted)Text("🚫 This message was deleted.",fontStyle=FontStyle.Italic,color=Muted,fontSize=14.sp)
-       else{message.attachment?.let{ChatAttachment(m,it)};if(message.text.isNotBlank())Text(message.text,fontSize=15.sp)}
+       else{message.attachment?.let{ChatAttachment(m,it)};if(message.text.isNotBlank())Text(message.text,fontSize=17.sp)}
        Row(Modifier.align(Alignment.End),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
         Text(SimpleDateFormat("HH:mm",Locale.getDefault()).format(Date(message.time)),fontSize=10.sp,color=Muted)
-        if(own)Text(if(delivered||read)"✓✓" else "✓",fontSize=13.sp,color=if(read)Color(0xFF60BBFF)else Muted,modifier=Modifier.semantics{contentDescription=if(read)"Read" else if(delivered)"Delivered" else "Sent"})
+        if(message.id.startsWith("local-"))Text(if(message.failed)"Not sent · tap to retry" else "Sending…",fontSize=11.sp,color=Muted,modifier=Modifier.clickable(enabled=message.failed){m.retryMessage(message.id)})
+        else if(own)Text(if(delivered||read)"✓✓" else "✓",fontSize=13.sp,color=if(read)Color(0xFF60BBFF)else Muted,modifier=Modifier.semantics{contentDescription=if(read)"Read" else if(delivered)"Delivered" else "Sent"})
        }
        if(message.reactions.isNotEmpty())Row(Modifier.align(Alignment.End).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){message.reactions.forEach{r->Surface(onClick={m.messageAction(message,"reaction",r.emoji)},shape=CircleShape,color=if(r.mine)Color(0xFF486252)else Color(0xFF17232D)){Text(r.emoji+" "+r.count,Modifier.padding(horizontal=7.dp,vertical=3.dp),fontSize=12.sp)}}}
       }
@@ -168,17 +169,16 @@ private suspend fun mediaFile(m:ArtiiModel,a:JSONObject,context:android.content.
    }
   }
   if(room.id==m.discovery.optJSONObject("active")?.optString("room")&&friendId!=null&&m.friends.none{it.id==friendId})TextButton(onClick={m.requestFriend(person?:Person(friendId,room.name))},enabled=friendId !in m.sent,modifier=Modifier.align(Alignment.CenterHorizontally)){Text(if(friendId in m.sent)"Request sent" else "Add friend")}
-  if(m.uploadProgress>=0f){LinearProgressIndicator(progress=m.uploadProgress,modifier=Modifier.fillMaxWidth(),color=LiveGreen);Text("Uploading "+(m.uploadProgress*100).toInt()+"%",Modifier.padding(horizontal=16.dp),fontSize=11.sp,color=Muted)}
   Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically){
    if(recorder!=null){
     IconButton(onClick={finishRecording(false)}){Icon(Icons.Default.Close,"Cancel recording")}
     Text("● %02d:%02d.%03d".format(elapsed/60000,elapsed/1000%60,elapsed%1000),Modifier.weight(1f),color=LiveGreen)
    }else{
     IconButton(onClick={emojiTray=!emojiTray;if(emojiTray)keyboard?.hide()}){OutlineSmiley(Modifier.semantics{contentDescription="Emoji picker"})}
-    OutlinedTextField(text,{text=it.take(2000)},placeholder={Text("Message")},modifier=Modifier.weight(1f),shape=RoundedCornerShape(24.dp),maxLines=4,enabled=!m.busy)
-    IconButton(onClick={attachments=true},enabled=!m.busy){Icon(Icons.Default.Add,"Attachments")}
+    OutlinedTextField(text,{text=it.take(2000)},placeholder={Text("Message")},modifier=Modifier.weight(1f),shape=RoundedCornerShape(24.dp),maxLines=4)
+    IconButton(onClick={attachments=true}){Icon(Icons.Default.Add,"Attachments")}
    }
-   if(text.isNotBlank()&&recorder==null)FilledIconButton(onClick={m.send(text){text=""}},enabled=!m.busy){Icon(Icons.Default.Send,"Send")}
+   if(text.isNotBlank()&&recorder==null)FilledIconButton(onClick={m.send(text){text=""}}){Icon(Icons.Default.Send,"Send")}
    else Box(Modifier.size(48.dp).background(if(recorder!=null)LiveGreen else Color(0xFF793BED),CircleShape).semantics{contentDescription="Hold to record voice message";onClick{if(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)micPermission.launch(Manifest.permission.RECORD_AUDIO)else if(recorder==null)startRecording()else finishRecording(true);true}}.pointerInteropFilter{event->
     when(event.action){MotionEvent.ACTION_DOWN->{if(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)micPermission.launch(Manifest.permission.RECORD_AUDIO)else startRecording();true};MotionEvent.ACTION_UP->{finishRecording(true);true};MotionEvent.ACTION_CANCEL->{finishRecording(false);true};else->true}
    },contentAlignment=Alignment.Center){Text("🎙",fontSize=22.sp)}
@@ -207,9 +207,9 @@ private suspend fun mediaFile(m:ArtiiModel,a:JSONObject,context:android.content.
  var player by remember{mutableStateOf<MediaPlayer?>(null)}
  var playing by remember{mutableStateOf(false)}
  val mime=a.getString("mime")
- suspend fun download(){loading=true;try{file=mediaFile(m,a,context);if(mime.startsWith("image/"))image=withContext(Dispatchers.IO){val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeFile(file!!.absolutePath,bounds);val options=BitmapFactory.Options().apply{inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/800).coerceAtLeast(1)};BitmapFactory.decodeFile(file!!.absolutePath,options)?.asImageBitmap()};failed=false}catch(e:Exception){failed=true;m.error=e.message}finally{loading=false}}
+ suspend fun download(){loading=true;try{file=if(a.has("localPath"))File(a.getString("localPath")) else mediaFile(m,a,context);if(mime.startsWith("image/"))image=withContext(Dispatchers.IO){val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeFile(file!!.absolutePath,bounds);val options=BitmapFactory.Options().apply{inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/800).coerceAtLeast(1)};BitmapFactory.decodeFile(file!!.absolutePath,options)?.asImageBitmap()};failed=false}catch(e:Exception){failed=true;m.error=e.message}finally{loading=false}}
  LaunchedEffect(a.getString("id")){if(mime.startsWith("image/"))download()}
- DisposableEffect(a.getString("id")){val activity=context as ComponentActivity;val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_STOP){player?.pause();playing=false;video=false}};activity.lifecycle.addObserver(observer);onDispose{activity.lifecycle.removeObserver(observer);player?.release();file?.delete()}}
+ DisposableEffect(a.getString("id")){val activity=context as ComponentActivity;val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_STOP){player?.pause();playing=false;video=false}};activity.lifecycle.addObserver(observer);onDispose{activity.lifecycle.removeObserver(observer);player?.release();if(!a.has("localPath"))file?.delete()}}
  if(image!=null)Image(image!!,"Photo",Modifier.fillMaxWidth().heightIn(max=240.dp),contentScale=ContentScale.Fit)
  else Column{
   TextButton(enabled=!loading,onClick={scope.launch{

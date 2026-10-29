@@ -56,7 +56,7 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
     const send=(status,obj)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(obj));if(status<300&&req.method!=='GET'&&!req.url.endsWith('/receipts'))chat?.publish();};
     try{
       const url=new URL(req.url,'http://localhost'),path=url.pathname;
-      if(req.method==='GET'&&path==='/health'){storage?.ping();return send(200,{ok:true,app:'Artii',version:'0.7.0',storage:storage?'postgres':'local-test',features:{social:social.providers(),callsRelay:!!(process.env.TURN_URL&&process.env.TURN_USERNAME&&process.env.TURN_PASSWORD),purchases:!!process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_FILE}});}
+      if(req.method==='GET'&&path==='/health'){storage?.ping();return send(200,{ok:true,app:'Artii',version:'0.7.4',revision:process.env.RENDER_GIT_COMMIT||null,storage:storage?'postgres':'local-test',features:{social:social.providers(),callsRelay:!!(process.env.TURN_URL&&process.env.TURN_USERNAME&&process.env.TURN_PASSWORD),purchases:!!process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_FILE}});}
       if(req.method==='GET'&&['/play/','/play/index.html','/play/style.css','/play/app.js'].includes(path)){
         const name=path.endsWith('/')?'index.html':path.split('/').at(-1);
         const content=readFileSync(new URL('../app/src/main/assets/games/'+name,import.meta.url));
@@ -76,10 +76,23 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
       }
       if(['/auth/social/result','/auth/social/complete'].includes(path)&&req.method==='POST'){
         const f=social.get(b.flowId,b.proof);if(f.status==='failed')fail(401,f.error);if(f.status!=='verified')return send(200,{status:'waiting'});
-        let u=db.users.find(u=>u.identity?.issuer===f.identity.issuer&&u.identity?.subject===f.identity.subject);
-        // Resolve existing accounts before offering first-time username setup.
-        // Matching email alone is not proof of ownership of an existing account.
-        if(!u&&f.identity.email&&db.users.some(existing=>existing.email===f.identity.email))fail(409,'This Artii account already has a username. Sign in with the original method to keep your profile.');
+        let u=db.users.find(u=>[u.identity,...(u.identities||[])].some(identity=>identity?.issuer===f.identity.issuer&&identity?.subject===f.identity.subject));
+        const existing=!u&&f.identity.email?db.users.find(account=>account.email?.toLowerCase()===f.identity.email):null;
+        if(existing){
+          // Only Google's verified Gmail identity is authoritative for automatic email linking.
+          // Other domains must prove ownership of the existing Artii account once.
+          const googleGmail=f.provider==='google'&&f.identity.subject.startsWith('google-oauth2|')&&/^[^@\s]+@gmail\.com$/.test(f.identity.email);
+          if(!googleGmail){
+            if(!existing.password)fail(409,'Use the sign-in method already linked to this profile.');
+            if(!b.linkPassword)return send(200,{status:'link_required'});
+            const lk='link:'+key;limits.set(lk,(limits.get(lk)||0)+1);if(limits.get(lk)>10)fail(429,'Too many attempts. Please try again later.');
+            if(typeof b.linkPassword!=='string'||b.linkPassword.length>128)fail(400,'Enter your existing Artii password');
+            const derived=await derive(b.linkPassword,existing.salt,64);
+            if(!timingSafeEqual(Buffer.from(existing.password,'hex'),derived))fail(401,'Artii password is incorrect');
+          }
+          social.get(b.flowId,b.proof);
+          u=existing;u.identities||=[];if(!u.identities.some(identity=>identity.issuer===f.identity.issuer&&identity.subject===f.identity.subject))u.identities.push(f.identity);
+        }
         if(!u&&path.endsWith('/complete')){
           if(b.adult!==true)fail(400,'This alpha is for adults 18 and over');
           const username=claimUsername(b.username);

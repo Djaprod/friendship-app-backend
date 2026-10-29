@@ -25,6 +25,17 @@ export function attachGames(server,{db,save,authenticate,blocked,clock=Date.now}
       if(b.type==='join'){
         const code=String(b.code||'').trim().toUpperCase();const g=db.games.find(x=>x.code===code);if(!g)throw Error('Room code not found');if(g.players.some(x=>blocked(p.user.id,x.id)))throw Error('This room is unavailable');joinGame(g,p.user);p.game=g.id;mutate(g);return;
       }
+      if(b.type==='leave'){
+        const g=db.games.find(x=>x.code===String(b.code||'').trim().toUpperCase());
+        if(!g||!g.players.some(x=>x.id===p.user.id))throw Error('You are not in this room');
+        if(g.phase!=='lobby'&&g.phase!=='over'){g.phase='over';g.deadline=0;g.winner='Game ended: a player left';}
+        g.players=g.players.filter(x=>x.id!==p.user.id);
+        if(g.host===p.user.id)g.host=g.players.find(x=>!x.bot)?.id||'';
+        if(!g.players.some(x=>!x.bot))db.games=db.games.filter(x=>x!==g);
+        g.version++;save();
+        for(const peer of peers){if(peer.user?.id===p.user.id){if(peer.game===g.id)peer.game=null;send(peer,{type:'left',games:db.games.filter(x=>x.players.some(y=>y.id===p.user.id)).map(x=>({code:x.code,type:x.type,phase:x.phase}))})}else if(peer.game===g.id)snapshot(peer);}
+        return;
+      }
       if(b.type==='home'){p.game=null;snapshot(p);return;}
       if(b.type==='action'){
         const g=db.games.find(x=>x.id===p.game);if(!g)throw Error('Join a game first');
