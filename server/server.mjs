@@ -1,5 +1,6 @@
 import http from 'node:http';
 import {configurePublicOrigin} from './public-origin.mjs';
+import {createDurableMedia} from './durable-media.mjs';
 import {attachChat} from './chat-network.mjs';
 import {createMessaging,MAX_MEDIA_BYTES,MAX_VOICE_MS} from './messaging.mjs';
 import {promisify} from 'node:util';
@@ -51,12 +52,13 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
     const avatar=b.avatar??old.avatar??'';if(typeof avatar!=='string'||avatar.length>350000||avatar&&!/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(avatar))fail(400,'Choose a smaller JPEG or PNG profile picture');
     return {name,country:clean(b.country??old.country,60),bio:clean(b.bio??old.bio,150),badgeColor:/^#[0-9a-fA-F]{6}$/.test(b.badgeColor||'')?b.badgeColor:(old.badgeColor||''),language:clean(b.language??old.language??'English',40),interests:(Array.isArray(b.interests)?b.interests:old.interests||[]).slice(0,6).map(x=>clean(x,24)),avatar};
   }
-  const messaging=createMessaging({db,clock,save,fail,safeRoom,mediaDir:resolve(dirname(file),'media'),publish:()=>chat?.publish()});
+  const durableMedia=storage?createDurableMedia():null;
+  const messaging=createMessaging({db,clock,save,fail,safeRoom,mediaDir:resolve(dirname(file),'media'),publish:()=>chat?.publish(),durable:durableMedia});
   const server=http.createServer(async(req,res)=>{
     const send=(status,obj)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(obj));if(status<300&&req.method!=='GET'&&!req.url.endsWith('/receipts'))chat?.publish();};
     try{
       const url=new URL(req.url,'http://localhost'),path=url.pathname;
-      if(req.method==='GET'&&path==='/health'){storage?.ping();return send(200,{ok:true,app:'Artii',version:'0.7.4',revision:process.env.RENDER_GIT_COMMIT||null,storage:storage?'postgres':'local-test',features:{social:social.providers(),callsRelay:!!(process.env.TURN_URL&&process.env.TURN_USERNAME&&process.env.TURN_PASSWORD),purchases:!!process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_FILE}});}
+      if(req.method==='GET'&&path==='/health'){storage?.ping();return send(200,{ok:true,app:'Artii',version:'0.7.5',revision:process.env.RENDER_GIT_COMMIT||null,storage:storage?'postgres':'local-test',features:{social:social.providers(),callsRelay:!!(process.env.TURN_URL&&process.env.TURN_USERNAME&&process.env.TURN_PASSWORD),purchases:!!process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_FILE}});}
       if(req.method==='GET'&&['/play/','/play/index.html','/play/style.css','/play/app.js'].includes(path)){
         const name=path.endsWith('/')?'index.html':path.split('/').at(-1);
         const content=readFileSync(new URL('../app/src/main/assets/games/'+name,import.meta.url));
@@ -134,7 +136,7 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
       if(path==='/block'&&req.method==='DELETE'){db.blocks=db.blocks.filter(x=>!(x.by===id&&x.user===b.user));save();return send(200,{ok:true});}
       if(path==='/account'&&req.method==='DELETE'){
         if(b.confirm!=='DELETE')fail(400,'Type DELETE to confirm');encounters.end(encounters.active(id),'account deleted');
-        messaging.purgeUser(id);const roomIds=db.rooms.filter(r=>r.members.includes(id)).map(r=>r.id),callIds=db.calls.filter(c=>[c.from,c.to].includes(id)).map(c=>c.id);
+        await messaging.purgeUser(id);const roomIds=db.rooms.filter(r=>r.members.includes(id)).map(r=>r.id),callIds=db.calls.filter(c=>[c.from,c.to].includes(id)).map(c=>c.id);
         db.users=db.users.filter(u=>u.id!==id);db.sessions=db.sessions.filter(x=>x.user!==id);db.requests=db.requests.filter(x=>x.from!==id&&x.to!==id);db.friends=db.friends.filter(x=>!x.includes(id));
         db.messages=db.messages.filter(x=>x.from!==id);db.rooms=db.rooms.map(r=>{if(!r.members.includes(id))return r;const members=r.members.filter(p=>p!==id);return {...r,members,owner:r.owner===id?members[0]:r.owner,group:true,name:r.group?r.name:'Deleted account',encounter:undefined};}).filter(r=>r.members.length);const remainingRoomIds=new Set(db.rooms.map(r=>r.id));db.messages=db.messages.filter(x=>remainingRoomIds.has(x.room));db.shares=db.shares.filter(x=>x.user!==id).map(x=>({...x,audience:x.audience.filter(p=>p!==id)}));db.blocks=db.blocks.filter(x=>x.by!==id&&x.user!==id);db.reports=db.reports.filter(x=>x.by!==id&&x.user!==id);db.calls=db.calls.filter(c=>!callIds.includes(c.id));db.signals=db.signals.filter(x=>!callIds.includes(x.call));db.encounters=db.encounters.filter(e=>!e.members.includes(id));db.purchases=db.purchases.filter(p=>p.user!==id);db.invites=db.invites.filter(x=>x.from!==id&&x.to!==id);if(db.games)db.games=db.games.filter(g=>!g.players.some(p=>p.id===id));save();return send(200,{ok:true});
       }
@@ -169,14 +171,14 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
       const uploadRoute=path.match(new RegExp("^/rooms/([^/]+)/media$"));
       if(uploadRoute&&req.method==='POST')return send(200,await messaging.upload(req,uploadRoute[1],id));
       const msg=path.match(new RegExp("^/rooms/([^/]+)/messages$"));
-      if(msg){const r=db.rooms.find(x=>x.id===msg[1]);if(!safeRoom(r,id))fail(403,'This conversation is unavailable');if(req.method==='GET')return send(200,{messages:messaging.list(r.id,id)});if(req.method==='POST'){if(r.encounter&&db.encounters.find(e=>e.id===r.encounter)?.status!=='active')fail(409,'Waiting for both people to open the meeting');if(encounters.active(id)&&encounters.active(id).room!==r.id||r.members.some(pid=>encounters.active(pid)&&encounters.active(pid).room!==r.id))fail(409,'This person is busy in another connection');return send(200,{message:messaging.create(r,id,me.name,b)});}}
+      if(msg){const r=db.rooms.find(x=>x.id===msg[1]);if(!safeRoom(r,id))fail(403,'This conversation is unavailable');if(req.method==='GET')return send(200,{messages:messaging.list(r.id,id)});if(req.method==='POST'){if(r.encounter&&db.encounters.find(e=>e.id===r.encounter)?.status!=='active')fail(409,'Waiting for both people to open the meeting');if(encounters.active(id)&&encounters.active(id).room!==r.id||r.members.some(pid=>encounters.active(pid)&&encounters.active(pid).room!==r.id))fail(409,'This person is busy in another connection');return send(200,{message:await messaging.create(r,id,me.name,b)});}}
       if(path==='/inbox'&&req.method==='GET')return send(200,{messages:db.messages.filter(m=>m.from!==id&&!(m.delivered||[]).includes(id)&&safeRoom(db.rooms.find(r=>r.id===m.room),id)).slice(-200).map(m=>messaging.list(m.room,id).find(x=>x.id===m.id)).filter(Boolean)});
       const receipt=path.match(new RegExp("^/rooms/([^/]+)/receipts$"));
       if(receipt&&req.method==='POST')return send(200,messaging.receipts(receipt[1],id,b.ids,b.read===true));
       const action=path.match(new RegExp("^/messages/([^/]+)/(delete|reaction)$"));
-      if(action&&req.method==='POST')return send(200,{message:action[2]==='delete'?messaging.remove(action[1],id):messaging.react(action[1],id,b.emoji)});
+      if(action&&req.method==='POST')return send(200,{message:action[2]==='delete'?await messaging.remove(action[1],id):messaging.react(action[1],id,b.emoji)});
       const media=path.match(new RegExp("^/media/([a-f0-9-]+)$"));
-      if(media&&req.method==='GET'){const item=messaging.media(media[1],id);res.writeHead(200,{'Content-Type':item.mime,'Content-Length':item.size,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});createReadStream(item.path).on('error',()=>res.destroy()).pipe(res);return;}
+      if(media&&req.method==='GET'){const item=await messaging.media(media[1],id);res.writeHead(200,{'Content-Type':item.mime,'Content-Length':item.size,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});createReadStream(item.path).on('error',()=>res.destroy()).pipe(res);return;}
       if(path==='/location'&&req.method==='DELETE'){me.settings={...encounters.settings(me),ghost:true};db.shares=db.shares.filter(x=>x.user!==id);save();return send(200,{ok:true});}
       if(path==='/location'&&req.method==='PUT'){if(encounters.settings(me).ghost)fail(403,'Turn off Ghost Mode before sharing');
         const lat=Number(b.lat),lon=Number(b.lon),expires=Number(b.expires),audience=[...new Set(Array.isArray(b.audience)?b.audience:[])];
@@ -201,7 +203,7 @@ export function createArtiiServer({ storage = null, file = resolve(process.env.D
       fail(404,'Not found');
     }catch(e){send(e.status||500,{error:e.status?e.message:'Server error'});}
   });
-  const sweeper=setInterval(()=>{encounters.sweep();encounters.reloadDaily();messaging.sweepUploads()},3000);sweeper.unref();const billingTimer=setInterval(()=>billing.reconcile().catch(()=>{}),900000);billingTimer.unref();server.on('close',()=>{clearInterval(sweeper);clearInterval(billingTimer)});
+  const sweeper=setInterval(()=>{encounters.sweep();encounters.reloadDaily();messaging.sweepUploads()},3000);sweeper.unref();const billingTimer=setInterval(()=>billing.reconcile().catch(()=>{}),900000);billingTimer.unref();server.on('close',()=>{clearInterval(sweeper);clearInterval(billingTimer);void durableMedia?.close()});
   server.requestTimeout=30*60*1000;
   chat=attachChat(server,{user,save,clock,authenticate:token=>{const s=db.sessions.find(x=>x.hash===hash(token)&&x.expires>clock());return s?user(s.user):null;}});
   attachGames(server,{db,save,blocked,clock,authenticate:token=>{const s=db.sessions.find(x=>x.hash===hash(token)&&x.expires>clock());return s?user(s.user):null;}});

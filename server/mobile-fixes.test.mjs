@@ -5,14 +5,14 @@ import {createServer} from 'node:http';
 import {attachGames} from './game-network.mjs';
 import {createMessaging} from './messaging.mjs';
 
-test('message retries are idempotent and scoped to sender and room',()=>{
+test('message retries are idempotent and scoped to sender and room',async()=>{
  const db={messages:[],rooms:[{id:'r'},{id:'other'}]};let published=0;
  const messaging=createMessaging({db,clock:()=>1,save(){},fail(code,message){throw Error(message)},safeRoom:()=>true,mediaDir:'.',publish(){published++}});
- const first=messaging.create(db.rooms[0],'a','Alice',{text:'Hello',clientId:'retry-1'});
- assert.equal(messaging.create(db.rooms[0],'a','Alice',{text:'Hello',clientId:'retry-1'}).id,first.id);
+ const first=await messaging.create(db.rooms[0],'a','Alice',{text:'Hello',clientId:'retry-1'});
+ assert.equal((await messaging.create(db.rooms[0],'a','Alice',{text:'Hello',clientId:'retry-1'})).id,first.id);
  assert.equal(db.messages.length,1);assert.equal(published,1);
- assert.notEqual(messaging.create(db.rooms[0],'b','Bob',{text:'Hello',clientId:'retry-1'}).id,first.id);
- assert.notEqual(messaging.create(db.rooms[1],'a','Alice',{text:'Hello',clientId:'retry-1'}).id,first.id);
+ assert.notEqual((await messaging.create(db.rooms[0],'b','Bob',{text:'Hello',clientId:'retry-1'})).id,first.id);
+ assert.notEqual((await messaging.create(db.rooms[1],'a','Alice',{text:'Hello',clientId:'retry-1'})).id,first.id);
 });
 
 test('leaving rooms releases capacity, transfers host, and rejects nonmembers',async()=>{

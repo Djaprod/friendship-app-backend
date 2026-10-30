@@ -79,3 +79,13 @@ DO $$ BEGIN
  END IF;
 END $$;
 -- No anon/authenticated grants and no policies: service-only data, including hidden roles.
+
+-- Private durable attachment bytes; never included in client state snapshots.
+CREATE TABLE IF NOT EXISTS artii.media_chunks (
+ media_id text NOT NULL,
+ part integer NOT NULL CHECK(part >= 0),
+ bytes bytea NOT NULL,
+ PRIMARY KEY(media_id,part)
+);
+ALTER TABLE artii.media_chunks ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON artii.media_chunks FROM PUBLIC;
