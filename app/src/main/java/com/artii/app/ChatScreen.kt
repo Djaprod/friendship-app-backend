@@ -70,7 +70,7 @@ private suspend fun mediaFile(m:ArtiiModel,a:JSONObject,context:android.content.
  val url=URL(m.api.base.trimEnd('/')+"/media/"+id);require(BuildConfig.DEBUG||url.protocol=="https")
  val connection=url.openConnection() as HttpURLConnection
  try{connection.connectTimeout=5000;connection.readTimeout=15000;connection.setRequestProperty("Authorization","Bearer "+m.api.token)
-  check(connection.responseCode==200){"Media is no longer available"}
+  when(connection.responseCode){404,410->throw java.io.FileNotFoundException("This attachment is unavailable. Ask the sender to send it again.");401,403->throw java.io.IOException("Sign in again to open this attachment.");200->Unit;else->throw java.io.IOException("Unable to load this attachment. Tap to retry.")}
   connection.inputStream.use{input->target.outputStream().use{output->val buffer=ByteArray(8192);var total=0;while(true){val n=input.read(buffer);if(n<0)break;total+=n;check(total.toLong()<=m.mediaMaxBytes){"Media too large"};output.write(buffer,0,n)}}};target
  }catch(e:Exception){target.delete();throw e}finally{connection.disconnect()}
 }
@@ -203,13 +203,15 @@ private suspend fun mediaFile(m:ArtiiModel,a:JSONObject,context:android.content.
  var image by remember{mutableStateOf<ImageBitmap?>(null)}
  var loading by remember{mutableStateOf(false)}
  var failed by remember{mutableStateOf(false)}
+ var mediaError by remember{mutableStateOf<String?>(null)}
  var video by remember{mutableStateOf(false)}
  var player by remember{mutableStateOf<MediaPlayer?>(null)}
  var playing by remember{mutableStateOf(false)}
  val mime=a.getString("mime")
- suspend fun download(){loading=true;try{file=if(a.has("localPath"))File(a.getString("localPath")) else mediaFile(m,a,context);if(mime.startsWith("image/"))image=withContext(Dispatchers.IO){val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeFile(file!!.absolutePath,bounds);val options=BitmapFactory.Options().apply{inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/800).coerceAtLeast(1)};BitmapFactory.decodeFile(file!!.absolutePath,options)?.asImageBitmap()};failed=false}catch(e:Exception){failed=true;m.error=e.message}finally{loading=false}}
+ suspend fun download(){loading=true;try{file=if(a.has("localPath"))File(a.getString("localPath")) else mediaFile(m,a,context);if(mime.startsWith("image/"))image=withContext(Dispatchers.IO){val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeFile(file!!.absolutePath,bounds);val options=BitmapFactory.Options().apply{inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/800).coerceAtLeast(1)};BitmapFactory.decodeFile(file!!.absolutePath,options)?.asImageBitmap()};failed=false;mediaError=null}catch(e:CancellationException){throw e}catch(e:Exception){failed=true;mediaError=if(e is java.io.FileNotFoundException)e.message else "Unable to load this attachment. Tap to retry."}finally{loading=false}}
  LaunchedEffect(a.getString("id")){if(mime.startsWith("image/"))download()}
  DisposableEffect(a.getString("id")){val activity=context as ComponentActivity;val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_STOP){player?.pause();playing=false;video=false}};activity.lifecycle.addObserver(observer);onDispose{activity.lifecycle.removeObserver(observer);player?.release();if(!a.has("localPath"))file?.delete()}}
+ if(failed)Text(mediaError?:"Attachment unavailable",fontSize=12.sp,color=Muted)
  if(image!=null)Image(image!!,"Photo",Modifier.fillMaxWidth().heightIn(max=240.dp),contentScale=ContentScale.Fit)
  else Column{
   TextButton(enabled=!loading,onClick={scope.launch{

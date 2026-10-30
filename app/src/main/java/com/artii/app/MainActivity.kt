@@ -100,14 +100,7 @@ class MainActivity:ComponentActivity(){
     BackHandler(enabled=profile!=null||m.selectedRoom!=null||auth||edit||newGroup||call!=null){when{call!=null->{activity.engine?.close();call=null};profile!=null->profile=null;auth->auth=false;edit->edit=false;newGroup->newGroup=false;else->m.closeChat()}}
     if(call!=null){val c=call!!;val engine=remember(c.id){CallEngine(activity,m,c).also{activity.engine=it}};DisposableEffect(c.id){onDispose{engine.close();activity.engine=null}};LaunchedEffect(engine.finished){if(engine.finished)call=null};CallScreen(engine){call=null};return}
     Scaffold(containerColor=Cream,
-        bottomBar={if(!auth&&!edit&&!newGroup&&m.selectedRoom==null)NavigationBar(containerColor=Color(0xFF101932),tonalElevation=0.dp){
-            listOf("Profile","Discover","Chats","Games","Meet").forEachIndexed{i,label->
-                NavigationBarItem(selected=tab==label,onClick={tab=label},
-                    icon={Icon(listOf(Icons.Default.Person,Icons.Default.Search,Icons.Default.Email,Icons.Default.Star,Icons.Default.LocationOn)[i],m.tr(label,when(label){"Profile"->"Profil";"Discover"->"Découvrir";"Chats"->"Discussions";"Games"->"Jeux";else->"Carte"}))},
-                    alwaysShowLabel=false,
-                    colors=NavigationBarItemDefaults.colors(indicatorColor=Color(0xFF50316F),selectedIconColor=Coral,selectedTextColor=Coral))
-            }
-        }},
+        bottomBar={if(!auth&&!edit&&!newGroup&&m.selectedRoom==null)ArtiiNavigation(tab){tab=it}},
         topBar={if(m.selectedRoom==null&&tab!="Meet"&&!auth&&!newGroup)Row(Modifier.statusBarsPadding().fillMaxWidth().padding(horizontal=20.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Image(painterResource(R.drawable.artii_logo),null,Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)),contentScale=ContentScale.Fit);Text("Artii",fontSize=26.sp,fontWeight=FontWeight.Bold)}
             Row(verticalAlignment=Alignment.CenterVertically){if(m.demo)TextButton(onClick={auth=true}){Text("Log in",fontSize=12.sp)};if(tab=="Discover")ChanceCounter(m)}
